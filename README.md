@@ -31,4 +31,4 @@ The sequence runs pure Zig tests, typed markup/manifest validation, and a Releas
 - Provider work stays outside the render model. Future adapters normalize Google, Microsoft, CalDAV, and local data into provider-independent records through an effects boundary.
 - The project stays on the SDK-owned build graph (`app.zon` + `src/`) with no custom `build.zig`. The Zig entry point already leaves room for a live model-derived menu-bar status item.
 
-See [architecture.md](docs/architecture.md) for the seams that are already in place and [product-foundation.md](docs/product-foundation.md) for the first-pass scope and next proof points.
+See [architecture.md](docs/architecture.md) for the seams that are already in place, [product-foundation.md](docs/product-foundation.md) for the first-pass scope, and [performance-baseline.md](docs/performance-baseline.md) for measured limits and the next profiling target.
