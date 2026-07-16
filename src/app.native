@@ -42,60 +42,48 @@
   </column>
 </template>
 
-<template name="week-page" args="label days monday_events tuesday_events wednesday_events thursday_events friday_events saturday_events sunday_events">
-  <column width="{week_page_width}" label="{label}">
-    <row height="54" background="surface">
-      <spacer width="58" />
-      <for each="days" as="d" key="id">
-        <column grow="1" gap="2" main="center" cross="center" label="{d.name}">
-          <text size="sm" foreground="text_muted">{d.name}</text>
-          <if test="{d.today}">
-            <badge variant="primary">{d.day}</badge>
-          </if>
-          <else>
-            <text>{d.day}</text>
-          </else>
+<template name="week-header" args="label days">
+  <row width="{week_page_width}" height="54" background="surface" label="{label}">
+    <for each="days" as="d" key="id">
+      <column grow="1" gap="2" main="center" cross="center" label="{d.name}">
+        <text size="sm" foreground="text_muted">{d.name}</text>
+        <if test="{d.today}">
+          <badge variant="primary">{d.day}</badge>
+        </if>
+        <else>
+          <text>{d.day}</text>
+        </else>
+      </column>
+    </for>
+  </row>
+</template>
+
+<template name="week-grid" args="label monday_events tuesday_events wednesday_events thursday_events friday_events saturday_events sunday_events">
+  <stack width="{week_page_width}" height="1152" label="{label}">
+    <column grow="1">
+      <for each="hour_rows" as="h" key="id">
+        <column height="72" label="{h.label}">
+          <separator />
+          <spacer grow="1" />
         </column>
       </for>
+    </column>
+    <row grow="1">
+      <use template="event-column" day="Monday" events="{monday_events}" />
+      <separator />
+      <use template="event-column" day="Tuesday" events="{tuesday_events}" />
+      <separator />
+      <use template="event-column" day="Wednesday" events="{wednesday_events}" />
+      <separator />
+      <use template="event-column" day="Thursday" events="{thursday_events}" />
+      <separator />
+      <use template="event-column" day="Friday" events="{friday_events}" />
+      <separator />
+      <use template="event-column" day="Saturday" events="{saturday_events}" />
+      <separator />
+      <use template="event-column" day="Sunday" events="{sunday_events}" />
     </row>
-    <separator />
-    <scroll grow="1" label="{label}">
-      <row height="1152">
-        <column width="58">
-          <for each="hour_rows" as="h" key="id">
-            <row height="72" padding="6" main="end">
-              <text size="sm" foreground="text_muted">{h.label}</text>
-            </row>
-          </for>
-        </column>
-        <stack grow="1">
-          <column grow="1">
-            <for each="hour_rows" as="h" key="id">
-              <column height="72" label="{h.label}">
-                <separator />
-                <spacer grow="1" />
-              </column>
-            </for>
-          </column>
-          <row grow="1">
-            <use template="event-column" day="Monday" events="{monday_events}" />
-            <separator />
-            <use template="event-column" day="Tuesday" events="{tuesday_events}" />
-            <separator />
-            <use template="event-column" day="Wednesday" events="{wednesday_events}" />
-            <separator />
-            <use template="event-column" day="Thursday" events="{thursday_events}" />
-            <separator />
-            <use template="event-column" day="Friday" events="{friday_events}" />
-            <separator />
-            <use template="event-column" day="Saturday" events="{saturday_events}" />
-            <separator />
-            <use template="event-column" day="Sunday" events="{sunday_events}" />
-          </row>
-        </stack>
-      </row>
-    </scroll>
-  </column>
+  </stack>
 </template>
 
 <template name="month-page" args="label cells">
@@ -184,13 +172,39 @@
 
     <column grow="1">
       <if test="{view == 'week'}">
-        <scroll axis="horizontal" value="{week_scroll_offset}" grow="1" label="Week pages">
-          <row width="{week_track_width}">
-            <use template="week-page" label="July 6–12, 2026" days="{previous_week_days}" monday_events="{empty_week_events}" tuesday_events="{empty_week_events}" wednesday_events="{empty_week_events}" thursday_events="{empty_week_events}" friday_events="{empty_week_events}" saturday_events="{empty_week_events}" sunday_events="{empty_week_events}" />
-            <use template="week-page" label="July 13–19, 2026" days="{current_week_days}" monday_events="{monday_events}" tuesday_events="{tuesday_events}" wednesday_events="{wednesday_events}" thursday_events="{thursday_events}" friday_events="{friday_events}" saturday_events="{saturday_events}" sunday_events="{sunday_events}" />
-            <use template="week-page" label="July 20–26, 2026" days="{next_week_days}" monday_events="{empty_week_events}" tuesday_events="{empty_week_events}" wednesday_events="{empty_week_events}" thursday_events="{empty_week_events}" friday_events="{empty_week_events}" saturday_events="{empty_week_events}" sunday_events="{empty_week_events}" />
+        <column grow="1">
+          <row height="54" background="surface">
+            <column width="58" background="surface" />
+            <scroll axis="horizontal" value="{week_scroll_offset}" scroll-sync-group="1" grow="1" label="Week header pages" on-reach-start="recycle_week_backward" on-reach-end="recycle_week_forward">
+              <row width="{week_track_width}">
+                <for each="week_pages" as="p" key="slot_id">
+                  <use template="week-header" label="{p.label}" days="{p.days}" />
+                </for>
+              </row>
+            </scroll>
           </row>
-        </scroll>
+          <separator />
+          <row grow="1">
+            <scroll value="{week_vertical_offset}" scroll-sync-group="2" width="58" label="Time gutter">
+              <column height="1152">
+                <for each="hour_rows" as="h" key="id">
+                  <row height="72" padding="6" main="end">
+                    <text size="sm" foreground="text_muted">{h.label}</text>
+                  </row>
+                </for>
+              </column>
+            </scroll>
+            <scroll axis="horizontal" value="{week_scroll_offset}" scroll-sync-group="1" grow="1" label="Week pages" on-reach-start="recycle_week_backward" on-reach-end="recycle_week_forward">
+              <scroll value="{week_vertical_offset}" scroll-sync-group="2" width="{week_track_width}" grow="1" label="Week grids">
+                <row width="{week_track_width}" height="1152">
+                  <for each="week_pages" as="p" key="slot_id">
+                    <use template="week-grid" label="{p.label}" monday_events="{p.monday_events}" tuesday_events="{p.tuesday_events}" wednesday_events="{p.wednesday_events}" thursday_events="{p.thursday_events}" friday_events="{p.friday_events}" saturday_events="{p.saturday_events}" sunday_events="{p.sunday_events}" />
+                  </for>
+                </row>
+              </scroll>
+            </scroll>
+          </row>
+        </column>
       </if>
       <else>
         <column grow="1">
@@ -202,11 +216,11 @@
             </for>
           </row>
           <separator />
-          <scroll value="{month_scroll_offset}" grow="1" label="Month pages">
+          <scroll value="{month_scroll_offset}" grow="1" label="Month pages" on-reach-start="recycle_month_backward" on-reach-end="recycle_month_forward">
             <column height="{month_track_height}">
-              <use template="month-page" label="June 2026" cells="{previous_month_cells}" />
-              <use template="month-page" label="July 2026" cells="{current_month_cells}" />
-              <use template="month-page" label="August 2026" cells="{next_month_cells}" />
+              <for each="month_pages" as="p" key="slot_id">
+                <use template="month-page" label="{p.label}" cells="{p.cells}" />
+              </for>
             </column>
           </scroll>
         </column>

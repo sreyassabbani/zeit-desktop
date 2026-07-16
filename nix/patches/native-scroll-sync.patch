@@ -1,0 +1,456 @@
+diff --git a/src/primitives/canvas/ui.zig b/src/primitives/canvas/ui.zig
+index 8cd525e..704419f 100644
+--- a/src/primitives/canvas/ui.zig
++++ b/src/primitives/canvas/ui.zig
+@@ -576,6 +576,10 @@ pub fn Ui(comptime Msg: type) type {
+             /// document/list default; horizontal scrolls wide timelines.
+             /// Meaningless on non-scroll elements.
+             scroll_axis: canvas.WidgetScrollAxis = .vertical,
++            /// Nonzero scroll views in the same group and on the same axis
++            /// mirror runtime-owned offsets without dispatching model updates.
++            /// Meaningless on non-scroll elements.
++            scroll_sync_group: u64 = 0,
+             /// Layout-tween duration in milliseconds for `split`
+             /// (markup `resize-duration`): nonzero makes the split's
+             /// declared `value` a TARGET — a rebuild that moves it no
+@@ -2689,6 +2693,7 @@ pub fn Ui(comptime Msg: type) type {
+                 .window_drag = options.window_drag,
+                 .overscroll = options.overscroll,
+                 .scroll_axis = options.scroll_axis,
++                .scroll_sync_group = options.scroll_sync_group,
+                 .resize_duration_ms = options.resize_duration,
+                 .resize_easing = options.resize_easing,
+                 .resize_origin = options.resize_origin,
+diff --git a/src/primitives/canvas/ui_markup.zig b/src/primitives/canvas/ui_markup.zig
+index d507431..08e65b6 100644
+--- a/src/primitives/canvas/ui_markup.zig
++++ b/src/primitives/canvas/ui_markup.zig
+@@ -1118,6 +1118,7 @@ pub const known_events = schema.event_names;
+ 
+ pub const on_scroll_element_message = "on-scroll is only supported on scroll - the runtime emits scroll offsets for scroll containers, so the handler belongs on the scroll element itself";
+ pub const on_reach_end_element_message = "on-reach-end is only supported on scroll - the runtime emits the approach-end signal for scroll containers, so the handler belongs on the scroll element itself";
++pub const on_reach_start_element_message = "on-reach-start is only supported on scroll - the runtime emits the approach-start signal for scroll containers, so the handler belongs on the scroll element itself";
+ pub const on_scroll_payload_message = "on-scroll takes a bare Msg tag whose payload is the post-scroll state (a canvas.ScrollState variant, like activity_scrolled: canvas.ScrollState, or a declared record of its offset/velocity/viewport_extent/content_extent fields for transpiled cores)";
+ 
+ pub const on_resize_element_message = "on-resize is only supported on split - the runtime emits fraction changes for split dividers, so the handler belongs on the split element itself";
+diff --git a/src/primitives/canvas/ui_markup.zig b/src/primitives/canvas/ui_markup.zig
+--- a/src/primitives/canvas/ui_markup.zig
++++ b/src/primitives/canvas/ui_markup.zig
+@@ -2976,1 +2976,7 @@
+-                    } else if (std.mem.eql(u8, attribute.name, "on-resize")) {
++                    } else if (std.mem.eql(u8, attribute.name, "on-reach-start")) {
++                        // The approach-start signal is the leading-edge
++                        // mirror used when prepending/recycling history.
++                        if (!std.mem.eql(u8, node.name, "scroll")) {
++                            return attrError(node, attribute, on_reach_start_element_message);
++                        }
++                    } else if (std.mem.eql(u8, attribute.name, "on-resize")) {
+diff --git a/src/primitives/canvas/ui_markup_contract.zig b/src/primitives/canvas/ui_markup_contract.zig
+index 81144f2..7805f1c 100644
+--- a/src/primitives/canvas/ui_markup_contract.zig
++++ b/src/primitives/canvas/ui_markup_contract.zig
+@@ -47,7 +47,7 @@ pub const ValueKind = expr.ValueKind;
+ /// Bumped when the artifact layout or its checking semantics change; a
+ /// reader refuses versions it does not know (loudly, degrading to
+ /// structural checks — never a false pass).
+-pub const format_version: u32 = 1;
++pub const format_version: u32 = 2;
+ 
+ /// Where the app's build step writes the artifact, relative to the app
+ /// directory (a build product lives under zig-out, not in durable state).
+@@ -111,6 +111,7 @@ pub const NamedGroup = struct {
+ pub const Group = struct {
+     scalars: []const Scalar = &.{},
+     groups: []const NamedGroup = &.{},
++    iterables: []const Iterable = &.{},
+ };
+ 
+ /// One `for each` source: a slice/array field, a public slice/array
+@@ -198,6 +199,7 @@ fn describeGroupSeen(comptime T: type, comptime seen: []const type) Group {
+     comptime {
+         var scalars: []const Scalar = &.{};
+         var groups: []const NamedGroup = &.{};
++        var iterables: []const Iterable = &.{};
+         for (@typeInfo(T).@"struct".fields) |field| {
+             if (reflect.supportedScalar(field.type)) {
+                 scalars = scalars ++ &[_]Scalar{.{
+@@ -207,6 +209,14 @@ fn describeGroupSeen(comptime T: type, comptime seen: []const type) Group {
+                 }};
+                 continue;
+             }
++            if (reflect.sliceElement(field.type)) |Item| {
++                if (Item != u8) {
++                    var entry = describeItemSeen(Item, seen ++ &[_]type{T});
++                    entry.name = field.name;
++                    iterables = iterables ++ &[_]Iterable{entry};
++                }
++                continue;
++            }
+             // `reflect.Pointee` transparency: a `*const Row` field
+             // traverses like the struct it shares. Pointer models can
+             // cycle (unlike by-value structs), so already-described
+@@ -244,7 +254,7 @@ fn describeGroupSeen(comptime T: type, comptime seen: []const type) Group {
+                 }};
+             }
+         }
+-        return .{ .scalars = scalars, .groups = groups };
++        return .{ .scalars = scalars, .groups = groups, .iterables = iterables };
+     }
+ }
+ 
+@@ -256,6 +266,10 @@ fn typeListed(comptime T: type, comptime seen: []const type) bool {
+ }
+ 
+ fn describeItem(comptime Item: type) Iterable {
++    return describeItemSeen(Item, &.{});
++}
++
++fn describeItemSeen(comptime Item: type, comptime seen: []const type) Iterable {
+     comptime {
+         // `reflect.Pointee` transparency: `[]const *const Row` iterates
+         // items that bind like Row itself.
+@@ -265,7 +279,7 @@ fn describeItem(comptime Item: type) Iterable {
+             .item_type = @typeName(Bare),
+             .item_kind = if (reflect.supportedScalar(Item)) reflect.scalarKindOf(Item) else null,
+             .item_scalar = reflect.supportedScalar(Item),
+-            .item = if (@typeInfo(Bare) == .@"struct") describeGroup(Bare) else .{},
++            .item = if (@typeInfo(Bare) == .@"struct" and !typeListed(Bare, seen)) describeGroupSeen(Bare, seen) else .{},
+         };
+     }
+ }
+@@ -1052,6 +1066,15 @@ const Checker = struct {
+                 if (entry.binder == .slice and pathTail(path) == null) {
+                     return entry.binder;
+                 }
++                if (entry.binder == .item) {
++                    if (pathTail(path)) |field_name| {
++                        for (entry.binder.item.group.iterables) |*iterable| {
++                            if (std.mem.eql(u8, iterable.name, field_name)) {
++                                return .{ .slice = itemRefOf(iterable) };
++                            }
++                        }
++                    }
++                }
+             } else {
+                 for (self.contract.iterables) |*iterable| {
+                     if (std.mem.eql(u8, iterable.name, path) and !std.mem.eql(u8, iterable.item_type, "u8")) {
+diff --git a/src/primitives/canvas/ui_markup_compiled.zig b/src/primitives/canvas/ui_markup_compiled.zig
+index b76ad01..0713691 100644
+--- a/src/primitives/canvas/ui_markup_compiled.zig
++++ b/src/primitives/canvas/ui_markup_compiled.zig
+@@ -1332,6 +1332,7 @@ fn CompiledMarkupEngine(comptime ModelT: type, comptime MsgT: type, comptime res
+             variant: ?ValueVariant = null,
+             each: ?EachInfo = null,
+             site_index: ?usize = null,
++            item_field: ?[]const u8 = null,
+             /// True when `raw` is the declaration's default literal (the
+             /// use site omitted the arg): evaluated as a literal, never
+             /// parsed as an expression.
+@@ -1438,6 +1439,25 @@ fn CompiledMarkupEngine(comptime ModelT: type, comptime MsgT: type, comptime res
+                         if (site_entries[index].kind == .slice_arg and interpreter.pathTail(path) == null) {
+                             return .{ .name = arg_name, .raw = raw, .kind = .slice, .Item = site_entries[index].Item, .site_index = index };
+                         }
++                        if (site_entries[index].kind == .item) {
++                            if (interpreter.pathTail(path)) |field_name| {
++                                const SiteItem = interpreter.Pointee(site_entries[index].Item);
++                                if (@typeInfo(SiteItem) == .@"struct" and @hasField(SiteItem, field_name)) {
++                                    if (interpreter.sliceElement(@FieldType(SiteItem, field_name))) |Item| {
++                                        if (Item != u8) {
++                                            return .{
++                                                .name = arg_name,
++                                                .raw = raw,
++                                                .kind = .slice,
++                                                .Item = Item,
++                                                .site_index = index,
++                                                .item_field = field_name,
++                                            };
++                                        }
++                                    }
++                                }
++                            }
++                        }
+                     } else if (eachInfo(path)) |info| {
+                         // Strings stay scalars (interpreter parity): a
+                         // binding producing []const u8 binds as a value
+@@ -1493,6 +1513,10 @@ fn CompiledMarkupEngine(comptime ModelT: type, comptime MsgT: type, comptime res
+         fn argPayloadValue(comptime spec: ArgSpec, comptime site_entries: []const ScopeEntry, comptime node: markup.MarkupNode, ui: *Ui, model: *const ModelT, site_scope: anytype) ArgPayload(spec) {
+             if (comptime (spec.kind == .slice)) {
+                 if (comptime (spec.site_index != null)) {
++                    if (comptime (spec.item_field != null)) {
++                        const item = scopePayload(site_entries, comptime spec.site_index.?, site_scope);
++                        return interpreter.asSlice(spec.Item, &@field(item.*, spec.item_field.?));
++                    }
+                     return scopePayload(site_entries, comptime spec.site_index.?, site_scope);
+                 }
+                 return eachItems(comptime spec.each.?, ui, model);
+@@ -1854,6 +1878,14 @@ fn CompiledMarkupEngine(comptime ModelT: type, comptime MsgT: type, comptime res
+                     if (!std.mem.eql(u8, node.name, "scroll")) fail(node, markup.on_reach_end_element_message);
+                 }
+                 options.on_reach_end = msg;
++            } else if (comptime std.mem.eql(u8, event, "reach-start")) {
++                // The approach-start signal mirrors reach-end for
++                // prepend/recycling surfaces (interpreter and validator
++                // parity).
++                comptime {
++                    if (!std.mem.eql(u8, node.name, "scroll")) fail(node, markup.on_reach_start_element_message);
++                }
++                options.on_reach_start = msg;
+             } else {
+                 comptime fail(node, "unknown event attribute");
+             }
+diff --git a/src/primitives/canvas/ui_markup_view.zig b/src/primitives/canvas/ui_markup_view.zig
+index 83ef4bc..0bd8f6f 100644
+--- a/src/primitives/canvas/ui_markup_view.zig
++++ b/src/primitives/canvas/ui_markup_view.zig
+@@ -1415,6 +1415,11 @@ pub fn MarkupView(comptime ModelT: type, comptime MsgT: type) type {
+                         // Re-pass a slice arg to a nested use.
+                         return entry.payload;
+                     }
++                    if (entry.payload == .item) {
++                        if (try self.itemFieldSlicePayload(entry.payload.item, pathTail(path))) |payload| {
++                            return payload;
++                        }
++                    }
+                 } else {
+                     inline for (item_types, 0..) |Item, type_index| {
+                         // Strings stay scalars: a binding producing
+@@ -1436,6 +1441,41 @@ pub fn MarkupView(comptime ModelT: type, comptime MsgT: type) type {
+             return .{ .value = try self.evalAttrExpression(scope, node, attribute) };
+         }
+ 
++        /// Resolve a direct slice field on a loop item for a template arg.
++        /// The payload stays type-erased in the interpreter but is tagged
++        /// with the same `item_types` index used by `for each`.
++        fn itemFieldSlicePayload(self: *Self, item: @FieldType(ScopeEntry.Payload, "item"), field_name: ?[]const u8) BuildError!?ScopeEntry.Payload {
++            _ = self;
++            const name = field_name orelse return null;
++            inline for (item_types, 0..) |Item, type_index| {
++                if (item.type_index == type_index) {
++                    const T = Pointee(Item);
++                    if (@typeInfo(T) != .@"struct") return null;
++                    inline for (@typeInfo(T).@"struct".fields) |field| {
++                        if (std.mem.eql(u8, field.name, name)) {
++                            if (comptime sliceElement(field.type) == null) return null;
++                            const Element = comptime sliceElement(field.type).?;
++                            if (comptime (Element == u8)) return null;
++                            inline for (item_types, 0..) |Known, element_index| {
++                                if (comptime (Known == Element)) {
++                                    const value: *const T = @ptrCast(@alignCast(item.ptr));
++                                    const items = asSlice(Element, &@field(value.*, field.name));
++                                    return .{ .slice = .{
++                                        .type_index = element_index,
++                                        .ptr = @ptrCast(items.ptr),
++                                        .len = items.len,
++                                    } };
++                                }
++                            }
++                            return null;
++                        }
++                    }
++                    return null;
++                }
++            }
++            return null;
++        }
++
+         fn failPayload(self: *Self, node: markup.MarkupNode, message: []const u8) BuildError {
+             self.setDiagnostic(node, message);
+             return error.MarkupBuild;
+@@ -1770,6 +1810,13 @@ pub fn MarkupView(comptime ModelT: type, comptime MsgT: type) type {
+                     return self.failVoid(node, markup.on_reach_end_element_message);
+                 }
+                 options.on_reach_end = msg;
++            } else if (std.mem.eql(u8, event, "reach-start")) {
++                // The approach-start signal mirrors reach-end for
++                // prepend/recycling surfaces.
++                if (!std.mem.eql(u8, node.name, "scroll")) {
++                    return self.failVoid(node, markup.on_reach_start_element_message);
++                }
++                options.on_reach_start = msg;
+             } else {
+                 return self.failVoid(node, "unknown event attribute");
+             }
+diff --git a/src/primitives/canvas/ui_markup_view.zig b/src/primitives/canvas/ui_markup_view.zig
+index 0bd8f6f..8e8e36f 100644
+--- a/src/primitives/canvas/ui_markup_view.zig
++++ b/src/primitives/canvas/ui_markup_view.zig
+@@ -2265,19 +2265,19 @@ fn collectItemTypes(comptime Model: type) []const type {
+         var types: []const type = &.{};
+         for (@typeInfo(Model).@"struct".fields) |field| {
+             if (sliceElement(field.type)) |Element| {
+-                types = appendUniqueType(types, Element);
++                types = appendItemTypeTree(types, Element, &.{});
+             }
+         }
+         for (@typeInfo(Model).@"struct".decls) |decl| {
+             const DeclType = @TypeOf(@field(Model, decl.name));
+             if (sliceElement(DeclType)) |Element| {
+-                types = appendUniqueType(types, Element);
++                types = appendItemTypeTree(types, Element, &.{});
+             }
+             switch (@typeInfo(DeclType)) {
+                 .@"fn" => |info| {
+                     if (info.return_type) |Return| {
+                         if (sliceElement(Return)) |Element| {
+-                            types = appendUniqueType(types, Element);
++                            types = appendItemTypeTree(types, Element, &.{});
+                         }
+                     }
+                 },
+@@ -2288,6 +2288,29 @@ fn collectItemTypes(comptime Model: type) []const type {
+     }
+ }
+ 
++/// Include non-byte slice fields reachable from a loop item. Template
++/// arguments can pass those fields into nested loops, so the interpreted
++/// renderer needs their element types in the same erased-type registry as
++/// top-level model iterables.
++fn appendItemTypeTree(comptime types: []const type, comptime T: type, comptime seen: []const type) []const type {
++    comptime {
++        var next = appendUniqueType(types, T);
++        const Bare = Pointee(T);
++        for (seen) |existing| {
++            if (existing == Bare) return next;
++        }
++        if (@typeInfo(Bare) != .@"struct") return next;
++
++        const nested_seen = seen ++ &[_]type{Bare};
++        for (@typeInfo(Bare).@"struct".fields) |field| {
++            if (sliceElement(field.type)) |Element| {
++                if (Element != u8) next = appendItemTypeTree(next, Element, nested_seen);
++            }
++        }
++        return next;
++    }
++}
++
+ fn appendUniqueType(comptime types: []const type, comptime T: type) []const type {
+     for (types) |existing| {
+         if (existing == T) return types;
+diff --git a/src/primitives/canvas/ui_schema.zig b/src/primitives/canvas/ui_schema.zig
+index c587dfb..829dfb0 100644
+--- a/src/primitives/canvas/ui_schema.zig
++++ b/src/primitives/canvas/ui_schema.zig
+@@ -453,6 +453,9 @@ pub const attrs = [_]AttrInfo{
+     // Scroll direction (scroll only; the validator scopes it). The scalar
+     // value/offset channel is interpreted along this physical axis.
+     .{ .code = 80, .name = "axis", .class = .option, .group = .option, .field = "scroll_axis" },
++    // Nonzero groups mirror runtime-owned scroll offsets between separate
++    // rails without routing continuous input through the app model.
++    .{ .code = 81, .name = "scroll-sync-group", .class = .whole, .group = .option, .field = "scroll_sync_group" },
+ };
+ 
+ // ----------------------------------------------------------------- events
+@@ -468,6 +471,7 @@ pub const events = [_]EventInfo{
+     .{ .code = 8, .name = "hold" },
+     .{ .code = 9, .name = "resize", .payload = .fraction, .only_on_element = "split" },
+     .{ .code = 10, .name = "reach-end", .only_on_element = "scroll" },
++    .{ .code = 11, .name = "reach-start", .only_on_element = "scroll" },
+ };
+ 
+ // ------------------------------------------------------- token vocabulary
+diff --git a/src/primitives/canvas/widgets.zig b/src/primitives/canvas/widgets.zig
+index 8d9560f..a887f9e 100644
+--- a/src/primitives/canvas/widgets.zig
++++ b/src/primitives/canvas/widgets.zig
+@@ -819,6 +819,9 @@ pub const Widget = struct {
+     /// Physical axis for `.scroll_view` layout, input, semantics, and the
+     /// native scroll driver. Meaningless on non-scroll widgets.
+     scroll_axis: WidgetScrollAxis = .vertical,
++    /// Runtime-owned offset synchronization group. Zero leaves the scroll
++    /// view independent; nonzero same-axis peers mirror its offset.
++    scroll_sync_group: u64 = 0,
+     /// Per-region edge behavior for scroll containers (`overscroll:` in
+     /// the builder, `overscroll=` in markup): `.default` follows the
+     /// `ScrollPhysics.overscroll` token (off unless a theme flips it),
+diff --git a/src/runtime/view_widget_scroll.zig b/src/runtime/view_widget_scroll.zig
+index 3fcf67b..21d786c 100644
+--- a/src/runtime/view_widget_scroll.zig
++++ b/src/runtime/view_widget_scroll.zig
+@@ -97,6 +97,39 @@ pub fn RuntimeViewCanvasWidgetScroll(comptime RuntimeView: type) type {
+             self.widget_scroll_event_count += 1;
+         }
+ 
++        /// Mirror an already-applied runtime offset to same-axis scroll
++        /// peers in a nonzero sync group. Followers intentionally do not
++        /// enqueue app scroll events: one physical gesture has one logical
++        /// source, while every rail still translates in the same frame.
++        fn mirrorCanvasWidgetScrollGroup(self: *RuntimeView, source_index: usize, offset: f32) ?geometry.RectF {
++            if (source_index >= self.widget_layout_node_count) return null;
++            const source = self.widget_layout_nodes[source_index].widget;
++            if (source.kind != .scroll_view or source.scroll_sync_group == 0) return null;
++
++            var dirty: ?geometry.RectF = null;
++            for (self.widget_layout_nodes[0..self.widget_layout_node_count], 0..) |node, index| {
++                if (index == source_index) continue;
++                if (node.widget.kind != .scroll_view) continue;
++                if (node.widget.scroll_sync_group != source.scroll_sync_group) continue;
++                if (node.widget.scroll_axis != source.scroll_axis) continue;
++                if (canvasWidgetModelDrivenVirtual(node.widget)) continue;
++
++                const viewport = node.frame.inset(node.widget.layout.padding).normalized();
++                if (viewport.isEmpty()) continue;
++                const current = self.canvasWidgetScrollState(index, node, viewport);
++                var next = current;
++                next.offset = offset;
++                next.velocity = 0;
++                self.widget_scroll_states[index] = next;
++                if (next.offset == current.offset) continue;
++
++                self.widget_layout_nodes[index].widget.value = next.offset;
++                self.translateCanvasWidgetScrollDescendants(index, -(next.offset - current.offset));
++                dirty = unionRects(dirty, self.canvasWidgetDirtyBounds(index, node.frame));
++            }
++            return dirty;
++        }
++
+         /// Current scroll state of the scroll container with `id`, or null
+         /// when the id is not a mounted, measurable scroll view. Feeds the
+         /// `canvas_widget_scroll` event payload.
+@@ -186,9 +219,11 @@ pub fn RuntimeViewCanvasWidgetScroll(comptime RuntimeView: type) type {
+             self.translateCanvasWidgetScrollDescendants(scroll_index, -offset_delta);
+             self.noteCanvasWidgetScrollEvent(scroll_node.widget.id);
+ 
++            var dirty = self.canvasWidgetDirtyBounds(scroll_index, scroll_node.frame);
++            dirty = unionRects(dirty, mirrorCanvasWidgetScrollGroup(self, scroll_index, next.offset));
+             try self.refreshCanvasWidgetSemantics();
+             self.widget_revision += 1;
+-            return self.canvasWidgetDirtyBounds(scroll_index, scroll_node.frame);
++            return dirty;
+         }
+ 
+         pub fn applyCanvasWidgetTextareaScroll(self: *RuntimeView, scroll_index: usize, delta_y: f32, source: CanvasWidgetScrollSource) anyerror!?geometry.RectF {
+@@ -243,9 +278,11 @@ pub fn RuntimeViewCanvasWidgetScroll(comptime RuntimeView: type) type {
+             self.translateCanvasWidgetScrollDescendants(scroll_index, -offset_delta);
+             self.noteCanvasWidgetScrollEvent(scroll_node.widget.id);
+ 
++            var dirty = self.canvasWidgetDirtyBounds(scroll_index, scroll_node.frame);
++            dirty = unionRects(dirty, mirrorCanvasWidgetScrollGroup(self, scroll_index, next.offset));
+             try self.refreshCanvasWidgetSemantics();
+             self.widget_revision += 1;
+-            return self.canvasWidgetDirtyBounds(scroll_index, scroll_node.frame);
++            return dirty;
+         }
+ 
+         pub fn applyCanvasWidgetScrollKeyboardTarget(self: *RuntimeView, scroll_index: usize, target: CanvasWidgetScrollKeyboardTarget) anyerror!?geometry.RectF {
+@@ -272,9 +309,11 @@ pub fn RuntimeViewCanvasWidgetScroll(comptime RuntimeView: type) type {
+             self.translateCanvasWidgetScrollDescendants(scroll_index, -offset_delta);
+             self.noteCanvasWidgetScrollEvent(scroll_node.widget.id);
+ 
++            var dirty = self.canvasWidgetDirtyBounds(scroll_index, scroll_node.frame);
++            dirty = unionRects(dirty, mirrorCanvasWidgetScrollGroup(self, scroll_index, next.offset));
+             try self.refreshCanvasWidgetSemantics();
+             self.widget_revision += 1;
+-            return self.canvasWidgetDirtyBounds(scroll_index, scroll_node.frame);
++            return dirty;
+         }
+ 
+         pub fn stepCanvasWidgetKineticScroll(self: *RuntimeView, dt_ms: f32) anyerror!?geometry.RectF {
+@@ -308,6 +347,7 @@ pub fn RuntimeViewCanvasWidgetScroll(comptime RuntimeView: type) type {
+                 self.translateCanvasWidgetScrollDescendants(scroll_index, -offset_delta);
+                 self.noteCanvasWidgetScrollEvent(scroll_node.widget.id);
+                 dirty = unionRects(dirty, self.canvasWidgetDirtyBounds(scroll_index, scroll_node.frame));
++                dirty = unionRects(dirty, mirrorCanvasWidgetScrollGroup(self, scroll_index, next.offset));
+                 changed = true;
+             }
+ 

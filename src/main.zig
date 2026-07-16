@@ -7,6 +7,7 @@ const runner = @import("runner");
 const native_sdk = @import("native_sdk");
 
 const calendar = @import("domain/calendar.zig");
+const civil = @import("domain/civil_date.zig");
 const ranking = @import("domain/surface_ranking.zig");
 const fixtures = @import("fixtures.zig");
 
@@ -20,8 +21,17 @@ const sidebar_natural_width: f32 = 232;
 const separator_extent: f32 = 1;
 const initial_surface_width: f32 = 1380;
 const initial_surface_height: f32 = 860;
+const time_gutter_width: f32 = 58;
+const calendar_page_count: usize = 5;
+const calendar_page_count_extent: f32 = 5;
+const recycler_center_slot: i32 = 2;
+const recycler_center_extent: f32 = 2;
 const month_page_extent: f32 = 778;
-const month_page_count: f32 = 3;
+const initial_week_page_width = initial_surface_width - sidebar_natural_width - separator_extent - time_gutter_width;
+const fixture_week_monday: civil.CivilDate = .{ .year = 2026, .month = 7, .day = 13 };
+const fixture_month: civil.YearMonth = .{ .year = 2026, .month = 7 };
+const fixture_today: civil.CivilDate = .{ .year = 2026, .month = 7, .day = 15 };
+const weekday_names = [_][]const u8{ "MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN" };
 const app_name = "zeit-desktop";
 const app_display_name = "Zeit";
 const app_id = "app.zeit.desktop";
@@ -58,6 +68,25 @@ pub const ViewportSize = struct {
     height: f32,
 };
 
+pub const WeekPage = struct {
+    slot_id: u64,
+    label: []const u8,
+    days: []const fixtures.WeekDayHeader,
+    monday_events: []const fixtures.WeekEventBlock,
+    tuesday_events: []const fixtures.WeekEventBlock,
+    wednesday_events: []const fixtures.WeekEventBlock,
+    thursday_events: []const fixtures.WeekEventBlock,
+    friday_events: []const fixtures.WeekEventBlock,
+    saturday_events: []const fixtures.WeekEventBlock,
+    sunday_events: []const fixtures.WeekEventBlock,
+};
+
+pub const MonthPage = struct {
+    slot_id: u64,
+    label: []const u8,
+    cells: []const fixtures.MonthCell,
+};
+
 const ScrollOverridePhase = enum {
     idle,
     primed,
@@ -73,6 +102,10 @@ pub const Msg = union(enum) {
     select_event: u64,
     chrome_changed: native_sdk.WindowChrome,
     viewport_changed: ViewportSize,
+    recycle_week_backward,
+    recycle_week_forward,
+    recycle_month_backward,
+    recycle_month_forward,
     settle_scroll_override,
 
     pub const view_unbound = .{ "chrome_changed", "viewport_changed", "settle_scroll_override" };
@@ -81,8 +114,11 @@ pub const Msg = union(enum) {
 pub const Model = struct {
     view: CalendarView = .week,
     sidebar_open: bool = true,
-    week_scroll_offset: f32 = initial_surface_width - sidebar_natural_width - separator_extent,
-    month_scroll_offset: f32 = month_page_extent,
+    week_scroll_offset: f32 = initial_week_page_width * recycler_center_extent,
+    week_vertical_offset: f32 = 0,
+    month_scroll_offset: f32 = month_page_extent * recycler_center_extent,
+    week_window_start: i32 = -recycler_center_slot,
+    month_window_start: i32 = -recycler_center_slot,
     selected_event_id: ?u64 = null,
     calendars: @TypeOf(fixtures.calendar_visibility) = fixtures.calendar_visibility,
     chrome_leading: f32 = 0,
@@ -91,8 +127,8 @@ pub const Model = struct {
     viewport_width: f32 = initial_surface_width,
     viewport_height: f32 = initial_surface_height,
     viewport_initialized: bool = false,
-    week_scroll_target: f32 = initial_surface_width - sidebar_natural_width - separator_extent,
-    month_scroll_target: f32 = month_page_extent,
+    week_scroll_target: f32 = initial_week_page_width * recycler_center_extent,
+    month_scroll_target: f32 = month_page_extent * recycler_center_extent,
     week_scroll_override: bool = false,
     month_scroll_override: bool = false,
     scroll_override_phase: ScrollOverridePhase = .idle,
@@ -103,6 +139,8 @@ pub const Model = struct {
         "viewport_width",
         "viewport_height",
         "viewport_initialized",
+        "week_window_start",
+        "month_window_start",
         "week_scroll_target",
         "month_scroll_target",
         "week_scroll_override",
@@ -110,17 +148,25 @@ pub const Model = struct {
         "scroll_override_phase",
     };
 
-    pub fn period_label(_: *const Model) []const u8 {
-        return "July 2026";
+    pub fn period_label(model: *const Model, arena: std.mem.Allocator) []const u8 {
+        const visible_month = switch (model.view) {
+            .week => week: {
+                const monday = civil.addDays(fixture_week_monday, @as(i64, model.week_window_start + recycler_center_slot) * 7);
+                const focus = civil.addDays(monday, 3);
+                break :week civil.YearMonth{ .year = focus.year, .month = focus.month };
+            },
+            .month => civil.addMonths(fixture_month, model.month_window_start + recycler_center_slot),
+        };
+        return civil.formatMonthYear(arena, visible_month) catch "Calendar";
     }
 
     pub fn week_page_width(model: *const Model) f32 {
         const sidebar_extent = if (model.sidebar_open) sidebar_natural_width + separator_extent else 0;
-        return @max(320, model.viewport_width - sidebar_extent);
+        return @max(320, model.viewport_width - sidebar_extent - time_gutter_width);
     }
 
     pub fn week_track_width(model: *const Model) f32 {
-        return model.week_page_width() * 3;
+        return model.week_page_width() * calendar_page_count_extent;
     }
 
     pub fn month_page_height(_: *const Model) f32 {
@@ -128,7 +174,7 @@ pub const Model = struct {
     }
 
     pub fn month_track_height(_: *const Model) f32 {
-        return month_page_extent * month_page_count;
+        return month_page_extent * calendar_page_count_extent;
     }
 
     pub fn weekday_labels(_: *const Model) []const fixtures.WeekDayHeader {
@@ -139,60 +185,26 @@ pub const Model = struct {
         return &fixtures.hour_rows;
     }
 
-    pub fn previous_week_days(_: *const Model) []const fixtures.WeekDayHeader {
-        return &fixtures.week_days_previous;
+    pub fn week_pages(model: *const Model, arena: std.mem.Allocator) []const WeekPage {
+        const pages = arena.alloc(WeekPage, calendar_page_count) catch return &.{};
+        for (pages, 0..) |*page, slot| {
+            page.* = model.buildWeekPage(arena, @intCast(slot));
+        }
+        return pages;
     }
 
-    pub fn current_week_days(_: *const Model) []const fixtures.WeekDayHeader {
-        return &fixtures.week_days_current;
-    }
-
-    pub fn next_week_days(_: *const Model) []const fixtures.WeekDayHeader {
-        return &fixtures.week_days_next;
-    }
-
-    pub fn empty_week_events(_: *const Model) []const fixtures.WeekEventBlock {
-        return &.{};
-    }
-
-    pub fn monday_events(model: *const Model, arena: std.mem.Allocator) []const fixtures.WeekEventBlock {
-        return model.visibleEventsForDay(arena, 0);
-    }
-
-    pub fn tuesday_events(model: *const Model, arena: std.mem.Allocator) []const fixtures.WeekEventBlock {
-        return model.visibleEventsForDay(arena, 1);
-    }
-
-    pub fn wednesday_events(model: *const Model, arena: std.mem.Allocator) []const fixtures.WeekEventBlock {
-        return model.visibleEventsForDay(arena, 2);
-    }
-
-    pub fn thursday_events(model: *const Model, arena: std.mem.Allocator) []const fixtures.WeekEventBlock {
-        return model.visibleEventsForDay(arena, 3);
-    }
-
-    pub fn friday_events(model: *const Model, arena: std.mem.Allocator) []const fixtures.WeekEventBlock {
-        return model.visibleEventsForDay(arena, 4);
-    }
-
-    pub fn saturday_events(model: *const Model, arena: std.mem.Allocator) []const fixtures.WeekEventBlock {
-        return model.visibleEventsForDay(arena, 5);
-    }
-
-    pub fn sunday_events(model: *const Model, arena: std.mem.Allocator) []const fixtures.WeekEventBlock {
-        return model.visibleEventsForDay(arena, 6);
-    }
-
-    pub fn previous_month_cells(_: *const Model) []const fixtures.MonthCell {
-        return &fixtures.month_cells_previous;
-    }
-
-    pub fn current_month_cells(_: *const Model) []const fixtures.MonthCell {
-        return &fixtures.month_cells;
-    }
-
-    pub fn next_month_cells(_: *const Model) []const fixtures.MonthCell {
-        return &fixtures.month_cells_next;
+    pub fn month_pages(model: *const Model, arena: std.mem.Allocator) []const MonthPage {
+        const pages = arena.alloc(MonthPage, calendar_page_count) catch return &.{};
+        for (pages, 0..) |*page, slot| {
+            const month_offset = model.month_window_start + @as(i32, @intCast(slot));
+            const value = civil.addMonths(fixture_month, month_offset);
+            page.* = .{
+                .slot_id = @intCast(slot),
+                .label = civil.formatMonthYear(arena, value) catch "Month",
+                .cells = monthCellsForOffset(arena, month_offset, value),
+            };
+        }
+        return pages;
     }
 
     pub fn widget_events(model: *const Model, arena: std.mem.Allocator) []const WidgetEvent {
@@ -229,6 +241,35 @@ pub const Model = struct {
         return false;
     }
 
+    fn buildWeekPage(model: *const Model, arena: std.mem.Allocator, slot: i32) WeekPage {
+        const week_offset = model.week_window_start + slot;
+        const monday = civil.addDays(fixture_week_monday, @as(i64, week_offset) * 7);
+        const days = arena.alloc(fixtures.WeekDayHeader, 7) catch return emptyWeekPage(@intCast(slot));
+        for (days, 0..) |*header, day_index| {
+            const date = civil.addDays(monday, @intCast(day_index));
+            header.* = .{
+                .id = day_index + 1,
+                .name = weekday_names[day_index],
+                .day = date.day,
+                .today = civil.eql(date, fixture_today),
+            };
+        }
+
+        const empty: []const fixtures.WeekEventBlock = &.{};
+        return .{
+            .slot_id = @intCast(slot),
+            .label = civil.formatWeekRange(arena, monday) catch "Week",
+            .days = days,
+            .monday_events = if (week_offset == 0) model.visibleEventsForDay(arena, 0) else empty,
+            .tuesday_events = if (week_offset == 0) model.visibleEventsForDay(arena, 1) else empty,
+            .wednesday_events = if (week_offset == 0) model.visibleEventsForDay(arena, 2) else empty,
+            .thursday_events = if (week_offset == 0) model.visibleEventsForDay(arena, 3) else empty,
+            .friday_events = if (week_offset == 0) model.visibleEventsForDay(arena, 4) else empty,
+            .saturday_events = if (week_offset == 0) model.visibleEventsForDay(arena, 5) else empty,
+            .sunday_events = if (week_offset == 0) model.visibleEventsForDay(arena, 6) else empty,
+        };
+    }
+
     fn visibleEventsForDay(model: *const Model, arena: std.mem.Allocator, day_index: u8) []const fixtures.WeekEventBlock {
         const output = arena.alloc(fixtures.WeekEventBlock, fixtures.week_event_blocks.len) catch return &.{};
         var count: usize = 0;
@@ -242,6 +283,50 @@ pub const Model = struct {
     }
 };
 
+fn emptyWeekPage(slot_id: u64) WeekPage {
+    return .{
+        .slot_id = slot_id,
+        .label = "Week",
+        .days = &.{},
+        .monday_events = &.{},
+        .tuesday_events = &.{},
+        .wednesday_events = &.{},
+        .thursday_events = &.{},
+        .friday_events = &.{},
+        .saturday_events = &.{},
+        .sunday_events = &.{},
+    };
+}
+
+fn monthCellsForOffset(arena: std.mem.Allocator, month_offset: i32, value: civil.YearMonth) []const fixtures.MonthCell {
+    return switch (month_offset) {
+        -1 => &fixtures.month_cells_previous,
+        0 => &fixtures.month_cells,
+        1 => &fixtures.month_cells_next,
+        else => generatedMonthCells(arena, value),
+    };
+}
+
+fn generatedMonthCells(arena: std.mem.Allocator, value: civil.YearMonth) []const fixtures.MonthCell {
+    const cells = arena.alloc(fixtures.MonthCell, 42) catch return &.{};
+    const first = civil.CivilDate{ .year = value.year, .month = value.month, .day = 1 };
+    const grid_start = civil.addDays(first, -@as(i64, civil.mondayWeekday(first)));
+    for (cells, 0..) |*cell, index| {
+        const date = civil.addDays(grid_start, @intCast(index));
+        cell.* = .{
+            .id = index + 1,
+            .day = date.day,
+            .in_month = date.year == value.year and date.month == value.month,
+            .today = civil.eql(date, fixture_today),
+            .has_event1 = false,
+            .event1 = "",
+            .has_event2 = false,
+            .event2 = "",
+        };
+    }
+    return cells;
+}
+
 pub fn initialModel() Model {
     return .{};
 }
@@ -251,8 +336,10 @@ pub fn update(model: *Model, msg: Msg) void {
         .show_week => model.view = .week,
         .show_month => model.view = .month,
         .go_today => {
-            scheduleWeekScroll(model, model.week_page_width());
-            scheduleMonthScroll(model, month_page_extent);
+            model.week_window_start = -recycler_center_slot;
+            model.month_window_start = -recycler_center_slot;
+            scheduleWeekScroll(model, model.week_page_width() * recycler_center_extent);
+            scheduleMonthScroll(model, month_page_extent * recycler_center_extent);
         },
         .toggle_sidebar => {
             const old_page_width = model.week_page_width();
@@ -279,10 +366,14 @@ pub fn update(model: *Model, msg: Msg) void {
             const target = if (was_initialized)
                 scaledOffset(model.week_scroll_offset, old_page_width, model.week_page_width())
             else
-                model.week_page_width();
+                model.week_page_width() * recycler_center_extent;
             model.viewport_initialized = true;
             scheduleWeekScroll(model, target);
         },
+        .recycle_week_backward => recycleWeek(model, -1),
+        .recycle_week_forward => recycleWeek(model, 1),
+        .recycle_month_backward => recycleMonth(model, -1),
+        .recycle_month_forward => recycleMonth(model, 1),
         .settle_scroll_override => switch (model.scroll_override_phase) {
             .idle => {},
             .primed => {
@@ -314,10 +405,24 @@ pub fn syncRuntimeState(model: *Model, layout: canvas.WidgetLayoutTree) void {
         if (node.widget.kind != .scroll_view) continue;
         if (!model.week_scroll_override and std.mem.eql(u8, node.widget.semantics.label, "Week pages")) {
             model.week_scroll_offset = node.widget.value;
+        } else if (std.mem.eql(u8, node.widget.semantics.label, "Week grids")) {
+            model.week_vertical_offset = node.widget.value;
         } else if (!model.month_scroll_override and std.mem.eql(u8, node.widget.semantics.label, "Month pages")) {
             model.month_scroll_offset = node.widget.value;
         }
     }
+}
+
+fn recycleWeek(model: *Model, delta: i32) void {
+    model.week_window_start += delta;
+    const target = model.week_scroll_offset - @as(f32, @floatFromInt(delta)) * model.week_page_width();
+    scheduleWeekRebase(model, target);
+}
+
+fn recycleMonth(model: *Model, delta: i32) void {
+    model.month_window_start += delta;
+    const target = model.month_scroll_offset - @as(f32, @floatFromInt(delta)) * month_page_extent;
+    scheduleMonthRebase(model, target);
 }
 
 fn scheduleWeekScroll(model: *Model, target: f32) void {
@@ -332,6 +437,20 @@ fn scheduleMonthScroll(model: *Model, target: f32) void {
     model.month_scroll_offset = target + 1;
     model.month_scroll_override = true;
     model.scroll_override_phase = .primed;
+}
+
+fn scheduleWeekRebase(model: *Model, target: f32) void {
+    model.week_scroll_target = target;
+    model.week_scroll_offset = target;
+    model.week_scroll_override = true;
+    model.scroll_override_phase = .target;
+}
+
+fn scheduleMonthRebase(model: *Model, target: f32) void {
+    model.month_scroll_target = target;
+    model.month_scroll_offset = target;
+    model.month_scroll_override = true;
+    model.scroll_override_phase = .target;
 }
 
 fn scaledOffset(offset: f32, old_extent: f32, new_extent: f32) f32 {

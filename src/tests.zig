@@ -2,6 +2,7 @@ const std = @import("std");
 const native_sdk = @import("native_sdk");
 const main = @import("main.zig");
 const calendar = @import("domain/calendar.zig");
+const civil = @import("domain/civil_date.zig");
 const provider = @import("domain/provider.zig");
 const ranking = @import("domain/surface_ranking.zig");
 const overlap = @import("layout/overlap.zig");
@@ -72,6 +73,44 @@ test "month fixtures are complete Monday-first six-week grids" {
     try testing.expect(today != null);
     try testing.expectEqual(@as(u64, 17), today.?.id);
     try testing.expectEqual(@as(u64, 2), (today.?.id - 1) % 7);
+}
+
+test "civil date arithmetic crosses leap, month, and year boundaries" {
+    try testing.expect(civil.eql(
+        .{ .year = 2024, .month = 2, .day = 29 },
+        civil.addDays(.{ .year = 2024, .month = 2, .day = 28 }, 1),
+    ));
+    try testing.expect(civil.eql(
+        .{ .year = 2027, .month = 1, .day = 1 },
+        civil.addDays(.{ .year = 2026, .month = 12, .day = 31 }, 1),
+    ));
+    try testing.expectEqualDeep(
+        civil.YearMonth{ .year = 2025, .month = 12 },
+        civil.addMonths(.{ .year = 2026, .month = 1 }, -1),
+    );
+    try testing.expectEqual(@as(u8, 0), civil.mondayWeekday(.{ .year = 2026, .month = 7, .day = 13 }));
+}
+
+test "five recycled calendar pages remain chronologically ordered" {
+    var arena_state = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena_state.deinit();
+    var model = main.initialModel();
+
+    const weeks = model.week_pages(arena_state.allocator());
+    try testing.expectEqual(@as(usize, 5), weeks.len);
+    try testing.expectEqualStrings("June 29–July 5, 2026", weeks[0].label);
+    try testing.expectEqualStrings("July 13–19, 2026", weeks[2].label);
+    try testing.expectEqualStrings("July 27–August 2, 2026", weeks[4].label);
+    try testing.expectEqual(@as(u64, 2), weeks[2].slot_id);
+    try testing.expect(weeks[2].wednesday_events.len > 0);
+    try testing.expectEqual(@as(usize, 0), weeks[1].wednesday_events.len);
+
+    const months = model.month_pages(arena_state.allocator());
+    try testing.expectEqual(@as(usize, 5), months.len);
+    try testing.expectEqualStrings("May 2026", months[0].label);
+    try testing.expectEqualStrings("July 2026", months[2].label);
+    try testing.expectEqualStrings("September 2026", months[4].label);
+    try testing.expectEqual(@as(usize, 42), months[4].cells.len);
 }
 
 test "surface ranking gives explicit pins precedence" {
@@ -171,7 +210,7 @@ test "typed markup dispatch drives view navigation" {
     const month = findByText(tree.root, .button, "Month") orelse return error.WidgetNotFound;
     main.update(&model, tree.msgForPointer(month.id, .up) orelse return error.MessageNotFound);
     try testing.expectEqual(main.CalendarView.month, model.view);
-    try testing.expectEqualStrings("July 2026", model.period_label());
+    try testing.expectEqualStrings("July 2026", model.period_label(arena_state.allocator()));
 }
 
 test "week scrolling remains runtime-owned and dispatches no model message" {
@@ -181,7 +220,8 @@ test "week scrolling remains runtime-owned and dispatches no model message" {
     const tree = try buildTree(arena_state.allocator(), &model);
     const pages = findByLabel(tree.root, .scroll_view, "Week pages") orelse return error.WidgetNotFound;
     try testing.expectEqual(canvas.WidgetScrollAxis.horizontal, pages.scroll_axis);
-    try testing.expectEqual(model.week_page_width(), pages.value);
+    try testing.expectEqual(@as(u64, 1), pages.scroll_sync_group);
+    try testing.expectEqual(model.week_page_width() * 2, pages.value);
     try testing.expect(tree.msgForScroll(pages.id, .{ .offset = 240 }) == null);
 }
 
@@ -193,8 +233,28 @@ test "month view mounts adjacent months in one runtime-owned scroll region" {
     const tree = try buildTree(arena_state.allocator(), &model);
     const pages = findByLabel(tree.root, .scroll_view, "Month pages") orelse return error.WidgetNotFound;
     try testing.expectEqual(canvas.WidgetScrollAxis.vertical, pages.scroll_axis);
-    try testing.expectEqual(model.month_page_height(), pages.value);
+    try testing.expectEqual(model.month_page_height() * 2, pages.value);
     try testing.expect(tree.msgForScroll(pages.id, .{ .offset = 320 }) == null);
+}
+
+test "page recycling advances chronology while preserving the visual coordinate" {
+    var model = main.initialModel();
+    const week_width = model.week_page_width();
+    model.week_scroll_offset = week_width * 3.25;
+    const week_coordinate_before = @as(f32, @floatFromInt(model.week_window_start)) + model.week_scroll_offset / week_width;
+    main.update(&model, .recycle_week_forward);
+    const week_coordinate_after = @as(f32, @floatFromInt(model.week_window_start)) + model.week_scroll_offset / week_width;
+    try testing.expectEqual(@as(i32, -1), model.week_window_start);
+    try testing.expectApproxEqAbs(week_coordinate_before, week_coordinate_after, 0.0001);
+    try testing.expectApproxEqAbs(week_width * 2.25, model.week_scroll_target, 0.0001);
+
+    model.month_scroll_offset = model.month_page_height() * 0.75;
+    const month_coordinate_before = @as(f32, @floatFromInt(model.month_window_start)) + model.month_scroll_offset / model.month_page_height();
+    main.update(&model, .recycle_month_backward);
+    const month_coordinate_after = @as(f32, @floatFromInt(model.month_window_start)) + model.month_scroll_offset / model.month_page_height();
+    try testing.expectEqual(@as(i32, -3), model.month_window_start);
+    try testing.expectApproxEqAbs(month_coordinate_before, month_coordinate_after, 0.0001);
+    try testing.expectApproxEqAbs(model.month_page_height() * 1.75, model.month_scroll_target, 0.0001);
 }
 
 test "Today targets the current period after runtime offsets are synced" {
@@ -202,8 +262,8 @@ test "Today targets the current period after runtime offsets are synced" {
     model.week_scroll_offset = 42;
     model.month_scroll_offset = 91;
     main.update(&model, .go_today);
-    try testing.expectEqual(model.week_page_width(), model.week_scroll_target);
-    try testing.expectEqual(model.month_page_height(), model.month_scroll_target);
+    try testing.expectEqual(model.week_page_width() * 2, model.week_scroll_target);
+    try testing.expectEqual(model.month_page_height() * 2, model.month_scroll_target);
     try testing.expectEqual(model.week_scroll_target + 1, model.week_scroll_offset);
     try testing.expectEqual(model.month_scroll_target + 1, model.month_scroll_offset);
 
@@ -220,7 +280,7 @@ test "first viewport measurement centers the current week before resize scaling"
     main.update(&model, .{ .viewport_changed = .{ .width = 1710, .height = 1073 } });
     try testing.expect(model.viewport_initialized);
     try testing.expect(model.week_scroll_override);
-    try testing.expectEqual(model.week_page_width(), model.week_scroll_target);
+    try testing.expectEqual(model.week_page_width() * 2, model.week_scroll_target);
     main.update(&model, .settle_scroll_override);
     main.update(&model, .settle_scroll_override);
 

@@ -19,7 +19,10 @@
         nativeSdk = pkgs.applyPatches {
           name = "native-sdk-0.5.1-zeit";
           src = inputs.native-sdk;
-          patches = [ ./nix/patches/native-horizontal-scroll.patch ];
+          patches = [
+            ./nix/patches/native-horizontal-scroll.patch
+            ./nix/patches/native-scroll-sync.patch
+          ];
         };
         nativeCli = pkgs.stdenv.mkDerivation {
           pname = "native-sdk-cli";
