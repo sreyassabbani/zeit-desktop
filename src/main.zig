@@ -16,6 +16,12 @@ const canvas = native_sdk.canvas;
 const geometry = native_sdk.geometry;
 
 pub const header_natural_height: f32 = 52;
+const sidebar_natural_width: f32 = 232;
+const separator_extent: f32 = 1;
+const initial_surface_width: f32 = 1380;
+const initial_surface_height: f32 = 860;
+const month_page_extent: f32 = 778;
+const month_page_count: f32 = 3;
 const app_name = "zeit-desktop";
 const app_display_name = "Zeit";
 const app_id = "app.zeit.desktop";
@@ -47,6 +53,11 @@ pub const WidgetEvent = struct {
     pinned: bool,
 };
 
+pub const ViewportSize = struct {
+    width: f32,
+    height: f32,
+};
+
 pub const Msg = union(enum) {
     show_week,
     show_month,
@@ -55,56 +66,49 @@ pub const Msg = union(enum) {
     toggle_calendar: u64,
     select_event: u64,
     chrome_changed: native_sdk.WindowChrome,
+    viewport_changed: ViewportSize,
 
-    pub const view_unbound = .{"chrome_changed"};
+    pub const view_unbound = .{ "chrome_changed", "viewport_changed" };
 };
 
 pub const Model = struct {
     view: CalendarView = .week,
     sidebar_open: bool = true,
-    week_offset: i8 = 0,
-    month_offset: i8 = 0,
+    week_scroll_offset: f32 = initial_surface_width - sidebar_natural_width - separator_extent,
+    month_scroll_offset: f32 = month_page_extent,
     selected_event_id: ?u64 = null,
     calendars: @TypeOf(fixtures.calendar_visibility) = fixtures.calendar_visibility,
     chrome_leading: f32 = 0,
     chrome_trailing: f32 = 0,
     header_height: f32 = header_natural_height,
+    viewport_width: f32 = initial_surface_width,
+    viewport_height: f32 = initial_surface_height,
 
     // These are intentionally private to derived bindings and update().
-    pub const view_unbound = .{ "week_offset", "month_offset", "selected_event_id" };
+    pub const view_unbound = .{ "selected_event_id", "viewport_width", "viewport_height" };
 
-    pub fn period_label(model: *const Model) []const u8 {
-        return switch (model.view) {
-            .month => if (model.month_offset < 0)
-                "June 2026"
-            else if (model.month_offset > 0)
-                "August 2026"
-            else
-                "July 2026",
-            .week => if (model.week_offset < 0)
-                "July 6–12, 2026"
-            else if (model.week_offset > 0)
-                "July 20–26, 2026"
-            else
-                "July 13–19, 2026",
-        };
+    pub fn period_label(_: *const Model) []const u8 {
+        return "July 2026";
     }
 
-    pub fn at_today(model: *const Model) bool {
-        return switch (model.view) {
-            .month => model.month_offset == 0,
-            .week => model.week_offset == 0,
-        };
+    pub fn week_page_width(model: *const Model) f32 {
+        const sidebar_extent = if (model.sidebar_open) sidebar_natural_width + separator_extent else 0;
+        return @max(320, model.viewport_width - sidebar_extent);
     }
 
-    pub fn week_days(model: *const Model) []const fixtures.WeekDayHeader {
-        if (model.week_offset < 0) return &fixtures.week_days_previous;
-        if (model.week_offset > 0) return &fixtures.week_days_next;
-        return &fixtures.week_days_current;
+    pub fn week_track_width(model: *const Model) f32 {
+        return model.week_page_width() * 3;
     }
 
-    pub fn weekday_labels(model: *const Model) []const fixtures.WeekDayHeader {
-        if (model.view == .week) return model.week_days();
+    pub fn month_page_height(_: *const Model) f32 {
+        return month_page_extent;
+    }
+
+    pub fn month_track_height(_: *const Model) f32 {
+        return month_page_extent * month_page_count;
+    }
+
+    pub fn weekday_labels(_: *const Model) []const fixtures.WeekDayHeader {
         return &fixtures.week_days_current;
     }
 
@@ -112,41 +116,60 @@ pub const Model = struct {
         return &fixtures.hour_rows;
     }
 
+    pub fn previous_week_days(_: *const Model) []const fixtures.WeekDayHeader {
+        return &fixtures.week_days_previous;
+    }
+
+    pub fn current_week_days(_: *const Model) []const fixtures.WeekDayHeader {
+        return &fixtures.week_days_current;
+    }
+
+    pub fn next_week_days(_: *const Model) []const fixtures.WeekDayHeader {
+        return &fixtures.week_days_next;
+    }
+
+    pub fn empty_week_events(_: *const Model) []const fixtures.WeekEventBlock {
+        return &.{};
+    }
+
     pub fn monday_events(model: *const Model, arena: std.mem.Allocator) []const fixtures.WeekEventBlock {
-        return model.eventsForDay(arena, 0);
+        return model.visibleEventsForDay(arena, 0);
     }
 
     pub fn tuesday_events(model: *const Model, arena: std.mem.Allocator) []const fixtures.WeekEventBlock {
-        return model.eventsForDay(arena, 1);
+        return model.visibleEventsForDay(arena, 1);
     }
 
     pub fn wednesday_events(model: *const Model, arena: std.mem.Allocator) []const fixtures.WeekEventBlock {
-        return model.eventsForDay(arena, 2);
+        return model.visibleEventsForDay(arena, 2);
     }
 
     pub fn thursday_events(model: *const Model, arena: std.mem.Allocator) []const fixtures.WeekEventBlock {
-        return model.eventsForDay(arena, 3);
+        return model.visibleEventsForDay(arena, 3);
     }
 
     pub fn friday_events(model: *const Model, arena: std.mem.Allocator) []const fixtures.WeekEventBlock {
-        return model.eventsForDay(arena, 4);
+        return model.visibleEventsForDay(arena, 4);
     }
 
     pub fn saturday_events(model: *const Model, arena: std.mem.Allocator) []const fixtures.WeekEventBlock {
-        return model.eventsForDay(arena, 5);
+        return model.visibleEventsForDay(arena, 5);
     }
 
     pub fn sunday_events(model: *const Model, arena: std.mem.Allocator) []const fixtures.WeekEventBlock {
-        return model.eventsForDay(arena, 6);
+        return model.visibleEventsForDay(arena, 6);
     }
 
-    pub fn month_cells(model: *const Model) []const fixtures.MonthCell {
-        if (model.month_offset != 0) return &.{};
+    pub fn previous_month_cells(_: *const Model) []const fixtures.MonthCell {
+        return &fixtures.month_cells_previous;
+    }
+
+    pub fn current_month_cells(_: *const Model) []const fixtures.MonthCell {
         return &fixtures.month_cells;
     }
 
-    pub fn has_month_data(model: *const Model) bool {
-        return model.month_offset == 0;
+    pub fn next_month_cells(_: *const Model) []const fixtures.MonthCell {
+        return &fixtures.month_cells_next;
     }
 
     pub fn widget_events(model: *const Model, arena: std.mem.Allocator) []const WidgetEvent {
@@ -183,8 +206,7 @@ pub const Model = struct {
         return false;
     }
 
-    fn eventsForDay(model: *const Model, arena: std.mem.Allocator, day_index: u8) []const fixtures.WeekEventBlock {
-        if (model.week_offset != 0) return &.{};
+    fn visibleEventsForDay(model: *const Model, arena: std.mem.Allocator, day_index: u8) []const fixtures.WeekEventBlock {
         const output = arena.alloc(fixtures.WeekEventBlock, fixtures.week_event_blocks.len) catch return &.{};
         var count: usize = 0;
         for (fixtures.week_event_blocks) |event| {
@@ -206,10 +228,14 @@ pub fn update(model: *Model, msg: Msg) void {
         .show_week => model.view = .week,
         .show_month => model.view = .month,
         .go_today => {
-            model.week_offset = 0;
-            model.month_offset = 0;
+            model.week_scroll_offset = model.week_page_width();
+            model.month_scroll_offset = month_page_extent;
         },
-        .toggle_sidebar => model.sidebar_open = !model.sidebar_open,
+        .toggle_sidebar => {
+            const old_page_width = model.week_page_width();
+            model.sidebar_open = !model.sidebar_open;
+            model.week_scroll_offset = scaledOffset(model.week_scroll_offset, old_page_width, model.week_page_width());
+        },
         .toggle_calendar => |id| for (&model.calendars) |*item| {
             if (item.id == id) {
                 item.visible = !item.visible;
@@ -222,11 +248,38 @@ pub fn update(model: *Model, msg: Msg) void {
             model.chrome_trailing = chrome.insets.right;
             model.header_height = @max(header_natural_height, chrome.insets.top);
         },
+        .viewport_changed => |viewport| {
+            const old_page_width = model.week_page_width();
+            model.viewport_width = @max(1, viewport.width);
+            model.viewport_height = @max(1, viewport.height);
+            model.week_scroll_offset = scaledOffset(model.week_scroll_offset, old_page_width, model.week_page_width());
+        },
     }
 }
 
 pub fn onChrome(chrome: native_sdk.WindowChrome) ?Msg {
     return .{ .chrome_changed = chrome };
+}
+
+pub fn onFrame(model: *const Model, frame: native_sdk.GpuFrame) ?Msg {
+    if (@abs(model.viewport_width - frame.size.width) <= 0.5 and @abs(model.viewport_height - frame.size.height) <= 0.5) return null;
+    return .{ .viewport_changed = .{ .width = frame.size.width, .height = frame.size.height } };
+}
+
+pub fn syncRuntimeState(model: *Model, layout: canvas.WidgetLayoutTree) void {
+    for (layout.nodes) |node| {
+        if (node.widget.kind != .scroll_view) continue;
+        if (std.mem.eql(u8, node.widget.semantics.label, "Week pages")) {
+            model.week_scroll_offset = node.widget.value;
+        } else if (std.mem.eql(u8, node.widget.semantics.label, "Month pages")) {
+            model.month_scroll_offset = node.widget.value;
+        }
+    }
+}
+
+fn scaledOffset(offset: f32, old_extent: f32, new_extent: f32) f32 {
+    if (old_extent <= 0) return new_extent;
+    return offset / old_extent * new_extent;
 }
 
 fn eventById(id: u64) ?calendar.CalendarEvent {
@@ -256,6 +309,8 @@ pub fn main(init: std.process.Init) !void {
         .canvas_label = canvas_label,
         .update = update,
         .on_chrome = onChrome,
+        .on_frame = onFrame,
+        .sync = syncRuntimeState,
         .view = CompiledZeitView.build,
         .markup = if (dev_markup_reload)
             .{ .source = app_markup, .watch_path = "src/app.native", .io = init.io }

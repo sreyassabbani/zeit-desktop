@@ -42,11 +42,101 @@
   </column>
 </template>
 
+<template name="week-page" args="label days monday_events tuesday_events wednesday_events thursday_events friday_events saturday_events sunday_events">
+  <column width="{week_page_width}" label="{label}">
+    <row height="54" background="surface">
+      <spacer width="58" />
+      <for each="days" as="d" key="id">
+        <column grow="1" gap="2" main="center" cross="center" label="{d.name}">
+          <text size="sm" foreground="text_muted">{d.name}</text>
+          <if test="{d.today}">
+            <badge variant="primary">{d.day}</badge>
+          </if>
+          <else>
+            <text>{d.day}</text>
+          </else>
+        </column>
+      </for>
+    </row>
+    <separator />
+    <scroll grow="1" label="{label}">
+      <row height="1152">
+        <column width="58">
+          <for each="hour_rows" as="h" key="id">
+            <row height="72" padding="6" main="end">
+              <text size="sm" foreground="text_muted">{h.label}</text>
+            </row>
+          </for>
+        </column>
+        <stack grow="1">
+          <column grow="1">
+            <for each="hour_rows" as="h" key="id">
+              <column height="72" label="{h.label}">
+                <separator />
+                <spacer grow="1" />
+              </column>
+            </for>
+          </column>
+          <row grow="1">
+            <use template="event-column" day="Monday" events="{monday_events}" />
+            <separator />
+            <use template="event-column" day="Tuesday" events="{tuesday_events}" />
+            <separator />
+            <use template="event-column" day="Wednesday" events="{wednesday_events}" />
+            <separator />
+            <use template="event-column" day="Thursday" events="{thursday_events}" />
+            <separator />
+            <use template="event-column" day="Friday" events="{friday_events}" />
+            <separator />
+            <use template="event-column" day="Saturday" events="{saturday_events}" />
+            <separator />
+            <use template="event-column" day="Sunday" events="{sunday_events}" />
+          </row>
+        </stack>
+      </row>
+    </scroll>
+  </column>
+</template>
+
+<template name="month-page" args="label cells">
+  <column height="{month_page_height}" label="{label}">
+    <row height="40" padding="8" cross="center" background="surface">
+      <text><span weight="bold">{label}</span></text>
+    </row>
+    <separator />
+    <grid columns="7" gap="1" background="border">
+      <for each="cells" as="cell" key="id">
+        <if test="{cell.today}">
+          <list-item height="122" padding="8" gap="6" background="surface" selected="true" quiet-hover="true" label="Today, July {cell.day}">
+            <column gap="5" grow="1">
+              <row>
+                <badge variant="primary">{cell.day}</badge>
+              </row>
+              <if test="{cell.has_event1}"><badge variant="primary">{cell.event1}</badge></if>
+              <if test="{cell.has_event2}"><badge variant="secondary">{cell.event2}</badge></if>
+            </column>
+          </list-item>
+        </if>
+        <else>
+          <list-item height="122" padding="8" gap="6" background="surface" quiet-hover="true" label="{label}">
+            <column gap="5" grow="1">
+              <if test="{cell.in_month}"><text>{cell.day}</text></if>
+              <else><text foreground="text_muted">{cell.day}</text></else>
+              <if test="{cell.has_event1}"><badge variant="secondary">{cell.event1}</badge></if>
+              <if test="{cell.has_event2}"><badge variant="secondary">{cell.event2}</badge></if>
+            </column>
+          </list-item>
+        </else>
+      </for>
+    </grid>
+  </column>
+</template>
+
 <column background="background">
   <row height="{header_height}" padding="10" gap="8" cross="center" background="surface" window-drag="true" label="Calendar toolbar">
     <spacer width="{chrome_leading}" />
     <button size="sm" variant="ghost" icon="panel-left" on-press="toggle_sidebar" label="Toggle sidebar"></button>
-    <button size="sm" variant="outline" selected="{at_today}" on-press="go_today">Today</button>
+    <button size="sm" variant="outline" on-press="go_today">Today</button>
     <text grow="1" label="{period_label}"><span weight="bold" scale="1.15">{period_label}</span></text>
     <button-group>
       <button size="sm" selected="{view == 'week'}" on-press="show_week">Week</button>
@@ -94,55 +184,11 @@
 
     <column grow="1">
       <if test="{view == 'week'}">
-        <row height="54" background="surface">
-          <spacer width="58" />
-          <for each="week_days" as="d" key="id">
-            <column grow="1" gap="2" main="center" cross="center" label="{d.name}">
-              <text size="sm" foreground="text_muted">{d.name}</text>
-              <if test="{d.today}">
-                <badge variant="primary">{d.day}</badge>
-              </if>
-              <else>
-                <text>{d.day}</text>
-              </else>
-            </column>
-          </for>
-        </row>
-        <separator />
-        <scroll grow="1" label="Week timeline">
-          <row height="1152">
-            <column width="58">
-              <for each="hour_rows" as="h" key="id">
-                <row height="72" padding="6" main="end">
-                  <text size="sm" foreground="text_muted">{h.label}</text>
-                </row>
-              </for>
-            </column>
-            <stack grow="1">
-              <column grow="1">
-                <for each="hour_rows" as="h" key="id">
-                  <column height="72" label="{h.label}">
-                    <separator />
-                    <spacer grow="1" />
-                  </column>
-                </for>
-              </column>
-              <row grow="1">
-                <use template="event-column" day="Monday" events="{monday_events}" />
-                <separator />
-                <use template="event-column" day="Tuesday" events="{tuesday_events}" />
-                <separator />
-                <use template="event-column" day="Wednesday" events="{wednesday_events}" />
-                <separator />
-                <use template="event-column" day="Thursday" events="{thursday_events}" />
-                <separator />
-                <use template="event-column" day="Friday" events="{friday_events}" />
-                <separator />
-                <use template="event-column" day="Saturday" events="{saturday_events}" />
-                <separator />
-                <use template="event-column" day="Sunday" events="{sunday_events}" />
-              </row>
-            </stack>
+        <scroll axis="horizontal" value="{week_scroll_offset}" grow="1" label="Week pages">
+          <row width="{week_track_width}">
+            <use template="week-page" label="July 6–12, 2026" days="{previous_week_days}" monday_events="{empty_week_events}" tuesday_events="{empty_week_events}" wednesday_events="{empty_week_events}" thursday_events="{empty_week_events}" friday_events="{empty_week_events}" saturday_events="{empty_week_events}" sunday_events="{empty_week_events}" />
+            <use template="week-page" label="July 13–19, 2026" days="{current_week_days}" monday_events="{monday_events}" tuesday_events="{tuesday_events}" wednesday_events="{wednesday_events}" thursday_events="{thursday_events}" friday_events="{friday_events}" saturday_events="{saturday_events}" sunday_events="{sunday_events}" />
+            <use template="week-page" label="July 20–26, 2026" days="{next_week_days}" monday_events="{empty_week_events}" tuesday_events="{empty_week_events}" wednesday_events="{empty_week_events}" thursday_events="{empty_week_events}" friday_events="{empty_week_events}" saturday_events="{empty_week_events}" sunday_events="{empty_week_events}" />
           </row>
         </scroll>
       </if>
@@ -156,42 +202,13 @@
             </for>
           </row>
           <separator />
-          <if test="{has_month_data}">
-            <scroll grow="1" label="Month grid">
-              <grid columns="7" gap="1" background="border">
-                <for each="month_cells" as="cell" key="id">
-                  <if test="{cell.today}">
-                    <list-item height="122" padding="8" gap="6" background="surface" selected="true" quiet-hover="true" label="Today, July {cell.day}">
-                      <column gap="5" grow="1">
-                        <row>
-                          <badge variant="primary">{cell.day}</badge>
-                        </row>
-                        <if test="{cell.has_event1}"><badge variant="primary">{cell.event1}</badge></if>
-                        <if test="{cell.has_event2}"><badge variant="secondary">{cell.event2}</badge></if>
-                      </column>
-                    </list-item>
-                  </if>
-                  <else>
-                    <list-item height="122" padding="8" gap="6" background="surface" quiet-hover="true" label="Day {cell.day}">
-                      <column gap="5" grow="1">
-                        <if test="{cell.in_month}"><text>{cell.day}</text></if>
-                        <else><text foreground="text_muted">{cell.day}</text></else>
-                        <if test="{cell.has_event1}"><badge variant="secondary">{cell.event1}</badge></if>
-                        <if test="{cell.has_event2}"><badge variant="secondary">{cell.event2}</badge></if>
-                      </column>
-                    </list-item>
-                  </else>
-                </for>
-              </grid>
-            </scroll>
-          </if>
-          <else>
-            <column grow="1" main="center" cross="center" gap="6">
-              <text><span weight="bold">No fixture data for this month</span></text>
-              <text size="sm" foreground="text_muted">The navigation state is real; provider-backed dates come next.</text>
-              <button size="sm" variant="outline" on-press="go_today">Return to July</button>
+          <scroll value="{month_scroll_offset}" grow="1" label="Month pages">
+            <column height="{month_track_height}">
+              <use template="month-page" label="June 2026" cells="{previous_month_cells}" />
+              <use template="month-page" label="July 2026" cells="{current_month_cells}" />
+              <use template="month-page" label="August 2026" cells="{next_month_cells}" />
             </column>
-          </else>
+          </scroll>
         </column>
       </else>
     </column>

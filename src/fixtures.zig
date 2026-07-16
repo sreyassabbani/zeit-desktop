@@ -109,6 +109,23 @@ pub const week_event_blocks = [_]WeekEventBlock{
     weekBlock(109, 3, 6, 792, 72, "Weekly reset", "5:00–6:00", "Home", .surface, true),
 };
 
+pub const month_cells_previous = [_]MonthCell{
+    monthCell(1, 1, true, false, "Quarter planning", ""),  monthCell(2, 2, true, false, "", ""),               monthCell(3, 3, true, false, "", ""),
+    monthCell(4, 4, true, false, "Design review", ""),     monthCell(5, 5, true, false, "", ""),               monthCell(6, 6, true, false, "Farmers market", ""),
+    monthCell(7, 7, true, false, "", ""),                  monthCell(8, 8, true, false, "", ""),               monthCell(9, 9, true, false, "Writing block", ""),
+    monthCell(10, 10, true, false, "", ""),                monthCell(11, 11, true, false, "Therapy", ""),      monthCell(12, 12, true, false, "", ""),
+    monthCell(13, 13, true, false, "", ""),                monthCell(14, 14, true, false, "Weekly reset", ""), monthCell(15, 15, true, false, "", ""),
+    monthCell(16, 16, true, false, "", ""),                monthCell(17, 17, true, false, "Focus block", ""),  monthCell(18, 18, true, false, "", ""),
+    monthCell(19, 19, true, false, "Dinner", ""),          monthCell(20, 20, true, false, "", ""),             monthCell(21, 21, true, false, "", ""),
+    monthCell(22, 22, true, false, "Weekly planning", ""), monthCell(23, 23, true, false, "", ""),             monthCell(24, 24, true, false, "", ""),
+    monthCell(25, 25, true, false, "Project review", ""),  monthCell(26, 26, true, false, "", ""),             monthCell(27, 27, true, false, "", ""),
+    monthCell(28, 28, true, false, "Yoga", ""),            monthCell(29, 29, true, false, "", ""),             monthCell(30, 30, true, false, "Month review", ""),
+    monthCell(31, 1, false, false, "", ""),                monthCell(32, 2, false, false, "", ""),             monthCell(33, 3, false, false, "", ""),
+    monthCell(34, 4, false, false, "", ""),                monthCell(35, 5, false, false, "", ""),             monthCell(36, 6, false, false, "", ""),
+    monthCell(37, 7, false, false, "", ""),                monthCell(38, 8, false, false, "", ""),             monthCell(39, 9, false, false, "", ""),
+    monthCell(40, 10, false, false, "", ""),               monthCell(41, 11, false, false, "", ""),            monthCell(42, 12, false, false, "", ""),
+};
+
 pub const month_cells = [_]MonthCell{
     monthCell(1, 29, false, false, "", ""),                                monthCell(2, 30, false, false, "", ""),                        monthCell(3, 1, true, false, "", ""),
     monthCell(4, 2, true, false, "", ""),                                  monthCell(5, 3, true, false, "Independence Day observed", ""), monthCell(6, 4, true, false, "", ""),
@@ -121,7 +138,26 @@ pub const month_cells = [_]MonthCell{
     monthCell(25, 23, true, false, "Therapy", ""),                         monthCell(26, 24, true, false, "", ""),                        monthCell(27, 25, true, false, "Farmers market", ""),
     monthCell(28, 26, true, false, "", ""),                                monthCell(29, 27, true, false, "Plan August", ""),             monthCell(30, 28, true, false, "", ""),
     monthCell(31, 29, true, false, "Deep work", ""),                       monthCell(32, 30, true, false, "", ""),                        monthCell(33, 31, true, false, "Month review", ""),
-    monthCell(34, 1, false, false, "", ""),                                monthCell(35, 2, false, false, "", ""),
+    monthCell(34, 1, false, false, "", ""),                                monthCell(35, 2, false, false, "", ""),                        monthCell(36, 3, false, false, "", ""),
+    monthCell(37, 4, false, false, "", ""),                                monthCell(38, 5, false, false, "", ""),                        monthCell(39, 6, false, false, "", ""),
+    monthCell(40, 7, false, false, "", ""),                                monthCell(41, 8, false, false, "", ""),                        monthCell(42, 9, false, false, "", ""),
+};
+
+pub const month_cells_next = [_]MonthCell{
+    monthCell(1, 27, false, false, "", ""),              monthCell(2, 28, false, false, "", ""),               monthCell(3, 29, false, false, "", ""),
+    monthCell(4, 30, false, false, "", ""),              monthCell(5, 31, false, false, "", ""),               monthCell(6, 1, true, false, "Farmers market", ""),
+    monthCell(7, 2, true, false, "", ""),                monthCell(8, 3, true, false, "Weekly planning", ""),  monthCell(9, 4, true, false, "", ""),
+    monthCell(10, 5, true, false, "Deep work", ""),      monthCell(11, 6, true, false, "", ""),                monthCell(12, 7, true, false, "Dinner", ""),
+    monthCell(13, 8, true, false, "", ""),               monthCell(14, 9, true, false, "", ""),                monthCell(15, 10, true, false, "", ""),
+    monthCell(16, 11, true, false, "Design review", ""), monthCell(17, 12, true, false, "", ""),               monthCell(18, 13, true, false, "Therapy", ""),
+    monthCell(19, 14, true, false, "", ""),              monthCell(20, 15, true, false, "Yoga", ""),           monthCell(21, 16, true, false, "", ""),
+    monthCell(22, 17, true, false, "", ""),              monthCell(23, 18, true, false, "Project review", ""), monthCell(24, 19, true, false, "", ""),
+    monthCell(25, 20, true, false, "", ""),              monthCell(26, 21, true, false, "", ""),               monthCell(27, 22, true, false, "Weekly reset", ""),
+    monthCell(28, 23, true, false, "", ""),              monthCell(29, 24, true, false, "", ""),               monthCell(30, 25, true, false, "Writing block", ""),
+    monthCell(31, 26, true, false, "", ""),              monthCell(32, 27, true, false, "", ""),               monthCell(33, 28, true, false, "", ""),
+    monthCell(34, 29, true, false, "Month review", ""),  monthCell(35, 30, true, false, "", ""),               monthCell(36, 31, true, false, "", ""),
+    monthCell(37, 1, false, false, "", ""),              monthCell(38, 2, false, false, "", ""),               monthCell(39, 3, false, false, "", ""),
+    monthCell(40, 4, false, false, "", ""),              monthCell(41, 5, false, false, "", ""),               monthCell(42, 6, false, false, "", ""),
 };
 
 fn dayHeader(id: u64, name: []const u8, day: u8, today: bool) WeekDayHeader {

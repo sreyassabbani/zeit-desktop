@@ -31,10 +31,10 @@ fn findByText(widget: canvas.Widget, kind: canvas.WidgetKind, expected: []const 
     return null;
 }
 
-fn findByKind(widget: canvas.Widget, kind: canvas.WidgetKind) ?canvas.Widget {
-    if (widget.kind == kind) return widget;
+fn findByLabel(widget: canvas.Widget, kind: canvas.WidgetKind, expected: []const u8) ?canvas.Widget {
+    if (widget.kind == kind and std.mem.eql(u8, widget.semantics.label, expected)) return widget;
     for (widget.children) |child| {
-        if (findByKind(child, kind)) |found| return found;
+        if (findByLabel(child, kind, expected)) |found| return found;
     }
     return null;
 }
@@ -55,12 +55,14 @@ fn testEvent(id: u64, starts_at_ms: i64, ends_at_ms: i64, override: calendar.Sur
     };
 }
 
-test "month fixture is a complete Monday-first five-week grid" {
-    try testing.expectEqual(@as(usize, 35), fixtures.month_cells.len);
+test "month fixtures are complete Monday-first six-week grids" {
+    try testing.expectEqual(@as(usize, 42), fixtures.month_cells_previous.len);
+    try testing.expectEqual(@as(usize, 42), fixtures.month_cells.len);
+    try testing.expectEqual(@as(usize, 42), fixtures.month_cells_next.len);
     const first_week = [_]u8{ 29, 30, 1, 2, 3, 4, 5 };
     for (first_week, 0..) |day, index| try testing.expectEqual(day, fixtures.month_cells[index].day);
-    try testing.expectEqual(@as(u8, 1), fixtures.month_cells[33].day);
-    try testing.expectEqual(@as(u8, 2), fixtures.month_cells[34].day);
+    try testing.expectEqual(@as(u8, 8), fixtures.month_cells[40].day);
+    try testing.expectEqual(@as(u8, 9), fixtures.month_cells[41].day);
 
     var today: ?fixtures.MonthCell = null;
     for (fixtures.month_cells) |cell| if (cell.today) {
@@ -177,8 +179,31 @@ test "week scrolling remains runtime-owned and dispatches no model message" {
     defer arena_state.deinit();
     const model = main.initialModel();
     const tree = try buildTree(arena_state.allocator(), &model);
-    const timeline = findByKind(tree.root, .scroll_view) orelse return error.WidgetNotFound;
-    try testing.expect(tree.msgForScroll(timeline.id, .{ .offset = 240 }) == null);
+    const pages = findByLabel(tree.root, .scroll_view, "Week pages") orelse return error.WidgetNotFound;
+    try testing.expectEqual(canvas.WidgetScrollAxis.horizontal, pages.scroll_axis);
+    try testing.expectEqual(model.week_page_width(), pages.value);
+    try testing.expect(tree.msgForScroll(pages.id, .{ .offset = 240 }) == null);
+}
+
+test "month view mounts adjacent months in one runtime-owned scroll region" {
+    var arena_state = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena_state.deinit();
+    var model = main.initialModel();
+    main.update(&model, .show_month);
+    const tree = try buildTree(arena_state.allocator(), &model);
+    const pages = findByLabel(tree.root, .scroll_view, "Month pages") orelse return error.WidgetNotFound;
+    try testing.expectEqual(canvas.WidgetScrollAxis.vertical, pages.scroll_axis);
+    try testing.expectEqual(model.month_page_height(), pages.value);
+    try testing.expect(tree.msgForScroll(pages.id, .{ .offset = 320 }) == null);
+}
+
+test "Today targets the current period after runtime offsets are synced" {
+    var model = main.initialModel();
+    model.week_scroll_offset = 42;
+    model.month_scroll_offset = 91;
+    main.update(&model, .go_today);
+    try testing.expectEqual(model.week_page_width(), model.week_scroll_offset);
+    try testing.expectEqual(model.month_page_height(), model.month_scroll_offset);
 }
 
 test "calendar view lays out within the SDK node budget" {
