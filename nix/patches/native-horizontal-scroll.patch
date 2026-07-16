@@ -55,7 +55,7 @@ index f28452a..f3cdd7c 100644
          NSRect target = NSMakeRect(desired.x, self.bounds.size.height - desired.y - desired.height, desired.width, desired.height);
          if (!NSEqualRects(driver.frame, target)) driver.frame = target;
          NSSize contentSize = NSMakeSize(MAX(desired.content_width, 1), MAX(desired.content_height, 1));
-@@ -5782,31 +5785,37 @@ static BOOL NativeSdkCompositeBlurWriteRegion(NSDictionary *command, CGFloat sca
+@@ -5782,31 +5785,43 @@ static BOOL NativeSdkCompositeBlurWriteRegion(NSDictionary *command, CGFloat sca
  
  - (void)applyScrollDriverOffset:(NativeSdkScrollDriverView *)driver offsetY:(double)offsetY {
      self.applyingScrollDriverOffset = YES;
@@ -63,6 +63,12 @@ index f28452a..f3cdd7c 100644
 +    [driver.contentView setBoundsOrigin:driver.horizontal ? NSMakePoint(offsetY, 0) : NSMakePoint(0, offsetY)];
      [driver reflectScrolledClipView:driver.contentView];
      self.applyingScrollDriverOffset = NO;
++    // Frame/content reconciliation can queue the old clip origin before
++    // the source-side offset is applied. Make that queued sample echo the
++    // new source value instead of racing it back into the runtime.
++    if (self.scrollDriverEventPending && self.pendingScrollDriverId == driver.driverId) {
++        self.pendingScrollDriverOffsetY = offsetY;
++    }
  }
  
 -- (NativeSdkScrollDriverView *)scrollDriverForPoint:(NSPoint)viewPoint {

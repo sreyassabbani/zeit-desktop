@@ -58,6 +58,12 @@ pub const ViewportSize = struct {
     height: f32,
 };
 
+const ScrollOverridePhase = enum {
+    idle,
+    primed,
+    target,
+};
+
 pub const Msg = union(enum) {
     show_week,
     show_month,
@@ -67,8 +73,9 @@ pub const Msg = union(enum) {
     select_event: u64,
     chrome_changed: native_sdk.WindowChrome,
     viewport_changed: ViewportSize,
+    settle_scroll_override,
 
-    pub const view_unbound = .{ "chrome_changed", "viewport_changed" };
+    pub const view_unbound = .{ "chrome_changed", "viewport_changed", "settle_scroll_override" };
 };
 
 pub const Model = struct {
@@ -83,9 +90,25 @@ pub const Model = struct {
     header_height: f32 = header_natural_height,
     viewport_width: f32 = initial_surface_width,
     viewport_height: f32 = initial_surface_height,
+    viewport_initialized: bool = false,
+    week_scroll_target: f32 = initial_surface_width - sidebar_natural_width - separator_extent,
+    month_scroll_target: f32 = month_page_extent,
+    week_scroll_override: bool = false,
+    month_scroll_override: bool = false,
+    scroll_override_phase: ScrollOverridePhase = .idle,
 
     // These are intentionally private to derived bindings and update().
-    pub const view_unbound = .{ "selected_event_id", "viewport_width", "viewport_height" };
+    pub const view_unbound = .{
+        "selected_event_id",
+        "viewport_width",
+        "viewport_height",
+        "viewport_initialized",
+        "week_scroll_target",
+        "month_scroll_target",
+        "week_scroll_override",
+        "month_scroll_override",
+        "scroll_override_phase",
+    };
 
     pub fn period_label(_: *const Model) []const u8 {
         return "July 2026";
@@ -228,13 +251,13 @@ pub fn update(model: *Model, msg: Msg) void {
         .show_week => model.view = .week,
         .show_month => model.view = .month,
         .go_today => {
-            model.week_scroll_offset = model.week_page_width();
-            model.month_scroll_offset = month_page_extent;
+            scheduleWeekScroll(model, model.week_page_width());
+            scheduleMonthScroll(model, month_page_extent);
         },
         .toggle_sidebar => {
             const old_page_width = model.week_page_width();
             model.sidebar_open = !model.sidebar_open;
-            model.week_scroll_offset = scaledOffset(model.week_scroll_offset, old_page_width, model.week_page_width());
+            scheduleWeekScroll(model, scaledOffset(model.week_scroll_offset, old_page_width, model.week_page_width()));
         },
         .toggle_calendar => |id| for (&model.calendars) |*item| {
             if (item.id == id) {
@@ -249,10 +272,29 @@ pub fn update(model: *Model, msg: Msg) void {
             model.header_height = @max(header_natural_height, chrome.insets.top);
         },
         .viewport_changed => |viewport| {
+            const was_initialized = model.viewport_initialized;
             const old_page_width = model.week_page_width();
             model.viewport_width = @max(1, viewport.width);
             model.viewport_height = @max(1, viewport.height);
-            model.week_scroll_offset = scaledOffset(model.week_scroll_offset, old_page_width, model.week_page_width());
+            const target = if (was_initialized)
+                scaledOffset(model.week_scroll_offset, old_page_width, model.week_page_width())
+            else
+                model.week_page_width();
+            model.viewport_initialized = true;
+            scheduleWeekScroll(model, target);
+        },
+        .settle_scroll_override => switch (model.scroll_override_phase) {
+            .idle => {},
+            .primed => {
+                if (model.week_scroll_override) model.week_scroll_offset = model.week_scroll_target;
+                if (model.month_scroll_override) model.month_scroll_offset = model.month_scroll_target;
+                model.scroll_override_phase = .target;
+            },
+            .target => {
+                model.week_scroll_override = false;
+                model.month_scroll_override = false;
+                model.scroll_override_phase = .idle;
+            },
         },
     }
 }
@@ -262,6 +304,7 @@ pub fn onChrome(chrome: native_sdk.WindowChrome) ?Msg {
 }
 
 pub fn onFrame(model: *const Model, frame: native_sdk.GpuFrame) ?Msg {
+    if (model.scroll_override_phase != .idle) return .settle_scroll_override;
     if (@abs(model.viewport_width - frame.size.width) <= 0.5 and @abs(model.viewport_height - frame.size.height) <= 0.5) return null;
     return .{ .viewport_changed = .{ .width = frame.size.width, .height = frame.size.height } };
 }
@@ -269,12 +312,26 @@ pub fn onFrame(model: *const Model, frame: native_sdk.GpuFrame) ?Msg {
 pub fn syncRuntimeState(model: *Model, layout: canvas.WidgetLayoutTree) void {
     for (layout.nodes) |node| {
         if (node.widget.kind != .scroll_view) continue;
-        if (std.mem.eql(u8, node.widget.semantics.label, "Week pages")) {
+        if (!model.week_scroll_override and std.mem.eql(u8, node.widget.semantics.label, "Week pages")) {
             model.week_scroll_offset = node.widget.value;
-        } else if (std.mem.eql(u8, node.widget.semantics.label, "Month pages")) {
+        } else if (!model.month_scroll_override and std.mem.eql(u8, node.widget.semantics.label, "Month pages")) {
             model.month_scroll_offset = node.widget.value;
         }
     }
+}
+
+fn scheduleWeekScroll(model: *Model, target: f32) void {
+    model.week_scroll_target = target;
+    model.week_scroll_offset = target + 1;
+    model.week_scroll_override = true;
+    model.scroll_override_phase = .primed;
+}
+
+fn scheduleMonthScroll(model: *Model, target: f32) void {
+    model.month_scroll_target = target;
+    model.month_scroll_offset = target + 1;
+    model.month_scroll_override = true;
+    model.scroll_override_phase = .primed;
 }
 
 fn scaledOffset(offset: f32, old_extent: f32, new_extent: f32) f32 {

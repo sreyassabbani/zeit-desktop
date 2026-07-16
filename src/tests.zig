@@ -202,8 +202,60 @@ test "Today targets the current period after runtime offsets are synced" {
     model.week_scroll_offset = 42;
     model.month_scroll_offset = 91;
     main.update(&model, .go_today);
-    try testing.expectEqual(model.week_page_width(), model.week_scroll_offset);
-    try testing.expectEqual(model.month_page_height(), model.month_scroll_offset);
+    try testing.expectEqual(model.week_page_width(), model.week_scroll_target);
+    try testing.expectEqual(model.month_page_height(), model.month_scroll_target);
+    try testing.expectEqual(model.week_scroll_target + 1, model.week_scroll_offset);
+    try testing.expectEqual(model.month_scroll_target + 1, model.month_scroll_offset);
+
+    main.update(&model, .settle_scroll_override);
+    try testing.expectEqual(model.week_scroll_target, model.week_scroll_offset);
+    try testing.expectEqual(model.month_scroll_target, model.month_scroll_offset);
+    main.update(&model, .settle_scroll_override);
+    try testing.expect(!model.week_scroll_override);
+    try testing.expect(!model.month_scroll_override);
+}
+
+test "first viewport measurement centers the current week before resize scaling" {
+    var model = main.initialModel();
+    main.update(&model, .{ .viewport_changed = .{ .width = 1710, .height = 1073 } });
+    try testing.expect(model.viewport_initialized);
+    try testing.expect(model.week_scroll_override);
+    try testing.expectEqual(model.week_page_width(), model.week_scroll_target);
+    main.update(&model, .settle_scroll_override);
+    main.update(&model, .settle_scroll_override);
+
+    const old_page_width = model.week_page_width();
+    model.week_scroll_offset = old_page_width * 1.25;
+    main.update(&model, .{ .viewport_changed = .{ .width = 1510, .height = 973 } });
+    try testing.expectApproxEqAbs(@as(f32, 1.25), model.week_scroll_target / model.week_page_width(), 0.0001);
+}
+
+test "programmatic scroll targets survive one runtime sync then release ownership" {
+    var arena_state = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena_state.deinit();
+    var model = main.initialModel();
+    main.update(&model, .go_today);
+
+    const tree = try buildTree(arena_state.allocator(), &model);
+    var nodes: [1024]canvas.WidgetLayoutNode = undefined;
+    const layout = try canvas.layoutWidgetTree(tree.root, native_sdk.geometry.RectF.init(0, 0, 1710, 1073), &nodes);
+    const week = findByLabel(tree.root, .scroll_view, "Week pages") orelse return error.WidgetNotFound;
+    for (nodes[0..layout.nodes.len]) |*node| {
+        if (node.widget.id == week.id) node.widget.value = 42;
+    }
+    main.syncRuntimeState(&model, layout);
+    try testing.expectEqual(model.week_scroll_target + 1, model.week_scroll_offset);
+
+    const settle = main.onFrame(&model, .{ .size = .{ .width = model.viewport_width, .height = model.viewport_height } }) orelse return error.ExpectedMessage;
+    main.update(&model, settle);
+    try testing.expectEqual(model.week_scroll_target, model.week_scroll_offset);
+    main.syncRuntimeState(&model, layout);
+    try testing.expectEqual(model.week_scroll_target, model.week_scroll_offset);
+
+    main.update(&model, .settle_scroll_override);
+    try testing.expect(!model.week_scroll_override);
+    main.syncRuntimeState(&model, layout);
+    try testing.expectEqual(@as(f32, 42), model.week_scroll_offset);
 }
 
 test "calendar view lays out within the SDK node budget" {
