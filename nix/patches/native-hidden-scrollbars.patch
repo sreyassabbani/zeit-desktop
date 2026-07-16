@@ -1,0 +1,33 @@
+diff --git a/src/platform/macos/appkit_host.m b/src/platform/macos/appkit_host.m
+index 80a2c5c..23de934 100644
+--- a/src/platform/macos/appkit_host.m
++++ b/src/platform/macos/appkit_host.m
+@@ -5777,8 +5777,10 @@ static NSRect NativeSdkScreenRectFromBottomLeftRect(NSScreen *screen, NSRect re
+         // runtime owns.
+         const BOOL horizontal = desired.horizontal != 0;
+         driver.horizontal = horizontal;
+-        driver.hasHorizontalScroller = horizontal;
+-        driver.hasVerticalScroller = !horizontal;
++        // Zeit keeps native momentum and trackpad input but draws no
++        // scrollbar chrome on either axis.
++        driver.hasHorizontalScroller = NO;
++        driver.hasVerticalScroller = NO;
+         NSScrollElasticity elasticity = desired.rubber_band ? NSScrollElasticityAllowed : NSScrollElasticityNone;
+         driver.horizontalScrollElasticity = horizontal ? elasticity : NSScrollElasticityNone;
+         driver.verticalScrollElasticity = horizontal ? NSScrollElasticityNone : elasticity;
+diff --git a/src/primitives/canvas/widget_render.zig b/src/primitives/canvas/widget_render.zig
+index 257f39b..6ea0f9e 100644
+--- a/src/primitives/canvas/widget_render.zig
++++ b/src/primitives/canvas/widget_render.zig
+@@ -527,10 +527,7 @@ fn emitWidgetLayoutNode(builder: *Builder, layout: []const WidgetLayoutNode, nod
+             try builder.pushClip(.{ .id = widgetPartId(paint_widget.id, 1), .rect = paint_widget.frame });
+             try emitWidgetLayoutChildren(builder, layout, node_index, tokens, state);
+             try builder.popClip();
+-            // Native scroll drivers own the (OS overlay) scrollbar.
+-            if (!paint_widget.native_scroll) {
+-                try widget_render_scroll.emitScrollViewScrollbar(builder, paint_widget.frame, widgetScrollSemantics(layout, node_index).metrics, tokens, paint_widget.id, paint_widget.scroll_axis);
+-            }
++            // Zeit intentionally renders no scrollbar chrome.
+             return;
+         },
+         .alert => try widget_render_surfaces.emitAlertWidgetChrome(builder, paint_widget, tokens),

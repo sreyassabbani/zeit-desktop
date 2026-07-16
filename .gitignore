@@ -1,4 +1,5 @@
 .direnv/
+.tmp/
 .native/
 .zig-cache/
 result

@@ -22,6 +22,7 @@
           patches = [
             ./nix/patches/native-horizontal-scroll.patch
             ./nix/patches/native-scroll-sync.patch
+            ./nix/patches/native-hidden-scrollbars.patch
           ];
         };
         nativeCli = pkgs.stdenv.mkDerivation {
