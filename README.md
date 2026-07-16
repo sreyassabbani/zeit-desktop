@@ -9,10 +9,12 @@ The first pass establishes two real calendar layouts, deterministic fixture data
 ```sh
 direnv allow
 native doctor
-native dev
+native dev -Dtrace=off
 ```
 
 Use `nix develop` in environments without direnv. The flake pins Zig and builds the Native SDK 0.5.1 CLI directly from its pinned source; no package-manager install step is required.
+
+Native SDK development builds default to `-Dtrace=events`, which prints every runtime input, frame, and timer event. Zeit's normal development command turns that firehose off; use `native dev -Dtrace=events` only while diagnosing the event loop.
 
 ## Verify
 

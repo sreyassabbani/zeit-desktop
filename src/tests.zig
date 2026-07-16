@@ -31,6 +31,14 @@ fn findByText(widget: canvas.Widget, kind: canvas.WidgetKind, expected: []const 
     return null;
 }
 
+fn findByKind(widget: canvas.Widget, kind: canvas.WidgetKind) ?canvas.Widget {
+    if (widget.kind == kind) return widget;
+    for (widget.children) |child| {
+        if (findByKind(child, kind)) |found| return found;
+    }
+    return null;
+}
+
 fn testEvent(id: u64, starts_at_ms: i64, ends_at_ms: i64, override: calendar.SurfaceOverride) calendar.CalendarEvent {
     return .{
         .id = id,
@@ -162,6 +170,15 @@ test "typed markup dispatch drives view navigation" {
     main.update(&model, tree.msgForPointer(month.id, .up) orelse return error.MessageNotFound);
     try testing.expectEqual(main.CalendarView.month, model.view);
     try testing.expectEqualStrings("July 2026", model.period_label());
+}
+
+test "week scrolling remains runtime-owned and dispatches no model message" {
+    var arena_state = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena_state.deinit();
+    const model = main.initialModel();
+    const tree = try buildTree(arena_state.allocator(), &model);
+    const timeline = findByKind(tree.root, .scroll_view) orelse return error.WidgetNotFound;
+    try testing.expect(tree.msgForScroll(timeline.id, .{ .offset = 240 }) == null);
 }
 
 test "calendar view lays out within the SDK node budget" {

@@ -50,13 +50,10 @@ pub const WidgetEvent = struct {
 pub const Msg = union(enum) {
     show_week,
     show_month,
-    go_previous,
-    go_next,
     go_today,
     toggle_sidebar,
     toggle_calendar: u64,
     select_event: u64,
-    timeline_scrolled: canvas.ScrollState,
     chrome_changed: native_sdk.WindowChrome,
 
     pub const view_unbound = .{"chrome_changed"};
@@ -69,7 +66,6 @@ pub const Model = struct {
     month_offset: i8 = 0,
     selected_event_id: ?u64 = null,
     calendars: @TypeOf(fixtures.calendar_visibility) = fixtures.calendar_visibility,
-    timeline_scroll_top: f32 = 144,
     chrome_leading: f32 = 0,
     chrome_trailing: f32 = 0,
     header_height: f32 = header_natural_height,
@@ -91,20 +87,6 @@ pub const Model = struct {
                 "July 20–26, 2026"
             else
                 "July 13–19, 2026",
-        };
-    }
-
-    pub fn cannot_go_previous(model: *const Model) bool {
-        return switch (model.view) {
-            .month => model.month_offset <= -1,
-            .week => model.week_offset <= -1,
-        };
-    }
-
-    pub fn cannot_go_next(model: *const Model) bool {
-        return switch (model.view) {
-            .month => model.month_offset >= 1,
-            .week => model.week_offset >= 1,
         };
     }
 
@@ -223,26 +205,6 @@ pub fn update(model: *Model, msg: Msg) void {
     switch (msg) {
         .show_week => model.view = .week,
         .show_month => model.view = .month,
-        .go_previous => switch (model.view) {
-            .month => if (model.month_offset > -1) {
-                model.month_offset -= 1;
-                model.selected_event_id = null;
-            },
-            .week => if (model.week_offset > -1) {
-                model.week_offset -= 1;
-                model.selected_event_id = null;
-            },
-        },
-        .go_next => switch (model.view) {
-            .month => if (model.month_offset < 1) {
-                model.month_offset += 1;
-                model.selected_event_id = null;
-            },
-            .week => if (model.week_offset < 1) {
-                model.week_offset += 1;
-                model.selected_event_id = null;
-            },
-        },
         .go_today => {
             model.week_offset = 0;
             model.month_offset = 0;
@@ -255,7 +217,6 @@ pub fn update(model: *Model, msg: Msg) void {
             }
         },
         .select_event => |id| model.selected_event_id = if (model.selected_event_id == id) null else id,
-        .timeline_scrolled => |scroll| model.timeline_scroll_top = scroll.offset,
         .chrome_changed => |chrome| {
             model.chrome_leading = chrome.insets.left;
             model.chrome_trailing = chrome.insets.right;

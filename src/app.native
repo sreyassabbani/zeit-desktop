@@ -47,10 +47,6 @@
     <spacer width="{chrome_leading}" />
     <button size="sm" variant="ghost" icon="panel-left" on-press="toggle_sidebar" label="Toggle sidebar"></button>
     <button size="sm" variant="outline" selected="{at_today}" on-press="go_today">Today</button>
-    <button-group>
-      <button size="sm" icon="chevron-left" disabled="{cannot_go_previous}" on-press="go_previous" label="Previous period"></button>
-      <button size="sm" icon="chevron-right" disabled="{cannot_go_next}" on-press="go_next" label="Next period"></button>
-    </button-group>
     <text grow="1" label="{period_label}"><span weight="bold" scale="1.15">{period_label}</span></text>
     <button-group>
       <button size="sm" selected="{view == 'week'}" on-press="show_week">Week</button>
@@ -113,7 +109,7 @@
           </for>
         </row>
         <separator />
-        <scroll grow="1" value="{timeline_scroll_top}" on-scroll="timeline_scrolled" label="Week timeline">
+        <scroll grow="1" label="Week timeline">
           <row height="1152">
             <column width="58">
               <for each="hour_rows" as="h" key="id">
