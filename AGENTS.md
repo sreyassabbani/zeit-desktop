@@ -4,37 +4,37 @@
 
 Zeit is a macOS-first personal calendar for people whose calendar needs to help allocate attention, not merely mirror provider data. The immediate quality bar is the density, directness, scrolling, and week/month clarity of Notion Calendar. The differentiator begins with explicit rules for which events surface in menu-bar and desktop widgets.
 
-Desktop UI, interaction quality, and performance come first. Do not add mobile, login, provider sync, a backend, React, or a WebView unless the task explicitly calls for it. The current app is native-rendered Native SDK markup over a TypeScript core that compiles ahead of time to Zig; no JavaScript runtime ships in the app.
+Desktop UI, interaction quality, and performance come first. Do not add mobile, login, provider sync, a backend, React, or a WebView unless the task explicitly calls for it. The current app is native-rendered Native SDK markup over a Zig core; no JavaScript runtime ships in the app.
 
 ## Environment
 
 - Glance at `flake.nix` once at the start of work so the pinned environment is understood before running project commands.
 - Enter the pinned shell with `direnv allow` or `nix develop`.
-- Bun, Node, Zig, and the Native SDK CLI are pinned by `flake.lock` and `bun.lock`. Do not install host-global tooling.
-- Run project commands through Bun so `node_modules/.bin` resolves consistently: `bun run dev`, `bun run check`, `bun run test`, and `bun run build`.
-- `NATIVE_SDK_SKILLS_ROOT` is set in `flake.nix` because the npm platform wrapper otherwise cannot find the CLI's version-matched skill data.
+- Zig, the Native SDK source, and the Native SDK CLI are pinned by `flake.lock`. Do not install host-global tooling.
+- Run project commands directly inside the shell: `native dev`, `native check`, `native test`, and `native build`.
+- `NATIVE_SDK_PATH` and `NATIVE_SDK_SKILLS_ROOT` point at the same pinned SDK source in `flake.nix`, keeping the build graph and guidance version-matched.
 
 ## Native SDK workflow
 
 Native SDK is pre-1.0 and its checked-out examples can drift from the installed CLI. Before changing an unfamiliar SDK surface, load the installed 0.5.1 guidance rather than guessing:
 
 ```sh
-bun run skills:native:core
-bun run skills:native:ts
-bun run skills:native:ui
-bun run skills:native:automation
+native skills get core --full
+native skills get zig
+native skills get native-ui
+native skills get automation
 ```
 
 The repository discovery skill lives at `.agents/skills/native-sdk/SKILL.md`. Prefer zero-config app ownership (`app.zon` + `src/`) until a feature genuinely requires a custom `build.zig`. A live, model-derived menu-bar status item is one likely reason to graduate to owned Zig wiring later.
 
-After changing the Model or Msg shape, run `bun run test:native` before trusting markup errors from `native check`; the typed markup validator reads the last generated model contract. Run both `native test` and `native build` because Zig's lazy analysis can expose different paths.
+After changing the Model or Msg shape, run `native test` before trusting markup errors from `native check`; the typed markup validator reads the last generated model contract. Run both `native test` and `native build` because Zig's lazy analysis can expose different paths.
 
 ## Architecture boundaries
 
 - `src/domain/` owns provider-independent calendar types, provider wire contracts, and surface-ranking policy.
 - `src/layout/` owns pure calendar geometry. Keep timestamps and recurrence data out of pixels; project occurrences into local layout data first.
-- `src/fixtures.ts` is deterministic sample data, not a mock provider embedded in UI code.
-- `src/core.ts` is the Native SDK entry contract: Model, Msg, update, host-event channels, and exported view bindings.
+- `src/fixtures.zig` is deterministic sample data, not a mock provider embedded in UI code.
+- `src/main.zig` is the Native SDK entry contract: Model, Msg, update, host-event channels, and exported view bindings.
 - `src/app.native` is presentation. It may bind derived helpers but must not implement calendar policy or provider normalization.
 - Provider adapters must normalize into domain records at an effect boundary. Google, Microsoft, CalDAV, and local-store response shapes must never appear in the UI model.
 - Derive view data instead of storing it twice. Use stable numeric ids, readonly records, tagged unions, and exhaustive message switches.
@@ -50,7 +50,7 @@ After changing the Model or Msg shape, run `bun run test:native` before trusting
 
 ## Verification and collaboration
 
-- Unit-test ranking and layout rules in `tests/`; run `bun run verify` before handoff.
+- Unit-test ranking and layout rules in `src/tests.zig`; run `native test`, `native check`, and `native build` before handoff.
 - Use Native SDK automation snapshots, screenshots, interaction commands, and frame profiling for UI changes. Check `dispatch_errors=0`, node count, scroll state, and frame-stage timings.
 - If subagents are used, run no more than three at once. Give each one a bounded file or verification objective plus a deterministic stop condition, and point it to the relevant installed Native SDK skill first.
 - Preserve unrelated user changes and never rewrite generated lockfiles by hand.

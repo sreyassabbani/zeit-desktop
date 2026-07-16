@@ -18,6 +18,23 @@
         "type": "github"
       }
     },
+    "native-sdk": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1783970279,
+        "narHash": "sha256-plwgZEULmItesIgotlB7t1mTsClsrCHZpew0ZxL6MpY=",
+        "owner": "vercel-labs",
+        "repo": "native",
+        "rev": "f7aa92af6dcece250feba852af4d22e7f5429312",
+        "type": "github"
+      },
+      "original": {
+        "owner": "vercel-labs",
+        "repo": "native",
+        "rev": "f7aa92af6dcece250feba852af4d22e7f5429312",
+        "type": "github"
+      }
+    },
     "nixpkgs": {
       "locked": {
         "lastModified": 1783224372,
@@ -35,6 +52,7 @@
     "root": {
       "inputs": {
         "flake-utils": "flake-utils",
+        "native-sdk": "native-sdk",
         "nixpkgs": "nixpkgs"
       }
     },
