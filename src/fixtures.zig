@@ -73,25 +73,28 @@ pub const widget_rule: ranking.SurfaceRule = .{
 };
 
 pub const week_days_previous = [_]WeekDayHeader{
-    dayHeader(1, "MON", 6, false), dayHeader(2, "TUE", 7, false), dayHeader(3, "WED", 8, false),
-    dayHeader(4, "THU", 9, false), dayHeader(5, "FRI", 10, false), dayHeader(6, "SAT", 11, false), dayHeader(7, "SUN", 12, false),
+    dayHeader(1, "MON", 6, false),  dayHeader(2, "TUE", 7, false),  dayHeader(3, "WED", 8, false),
+    dayHeader(4, "THU", 9, false),  dayHeader(5, "FRI", 10, false), dayHeader(6, "SAT", 11, false),
+    dayHeader(7, "SUN", 12, false),
 };
 
 pub const week_days_current = [_]WeekDayHeader{
     dayHeader(1, "MON", 13, false), dayHeader(2, "TUE", 14, false), dayHeader(3, "WED", 15, true),
-    dayHeader(4, "THU", 16, false), dayHeader(5, "FRI", 17, false), dayHeader(6, "SAT", 18, false), dayHeader(7, "SUN", 19, false),
+    dayHeader(4, "THU", 16, false), dayHeader(5, "FRI", 17, false), dayHeader(6, "SAT", 18, false),
+    dayHeader(7, "SUN", 19, false),
 };
 
 pub const week_days_next = [_]WeekDayHeader{
     dayHeader(1, "MON", 20, false), dayHeader(2, "TUE", 21, false), dayHeader(3, "WED", 22, false),
-    dayHeader(4, "THU", 23, false), dayHeader(5, "FRI", 24, false), dayHeader(6, "SAT", 25, false), dayHeader(7, "SUN", 26, false),
+    dayHeader(4, "THU", 23, false), dayHeader(5, "FRI", 24, false), dayHeader(6, "SAT", 25, false),
+    dayHeader(7, "SUN", 26, false),
 };
 
 pub const hour_rows = [_]HourRow{
-    .{ .id = 6, .label = "6 AM" }, .{ .id = 7, .label = "7 AM" }, .{ .id = 8, .label = "8 AM" }, .{ .id = 9, .label = "9 AM" },
+    .{ .id = 6, .label = "6 AM" },   .{ .id = 7, .label = "7 AM" },   .{ .id = 8, .label = "8 AM" },   .{ .id = 9, .label = "9 AM" },
     .{ .id = 10, .label = "10 AM" }, .{ .id = 11, .label = "11 AM" }, .{ .id = 12, .label = "12 PM" }, .{ .id = 13, .label = "1 PM" },
-    .{ .id = 14, .label = "2 PM" }, .{ .id = 15, .label = "3 PM" }, .{ .id = 16, .label = "4 PM" }, .{ .id = 17, .label = "5 PM" },
-    .{ .id = 18, .label = "6 PM" }, .{ .id = 19, .label = "7 PM" }, .{ .id = 20, .label = "8 PM" }, .{ .id = 21, .label = "9 PM" },
+    .{ .id = 14, .label = "2 PM" },  .{ .id = 15, .label = "3 PM" },  .{ .id = 16, .label = "4 PM" },  .{ .id = 17, .label = "5 PM" },
+    .{ .id = 18, .label = "6 PM" },  .{ .id = 19, .label = "7 PM" },  .{ .id = 20, .label = "8 PM" },  .{ .id = 21, .label = "9 PM" },
 };
 
 pub const week_event_blocks = [_]WeekEventBlock{
@@ -107,16 +110,18 @@ pub const week_event_blocks = [_]WeekEventBlock{
 };
 
 pub const month_cells = [_]MonthCell{
-    monthCell(1, 29, false, false, "", ""), monthCell(2, 30, false, false, "", ""), monthCell(3, 1, true, false, "", ""),
-    monthCell(4, 2, true, false, "", ""), monthCell(5, 3, true, false, "Independence Day observed", ""), monthCell(6, 4, true, false, "", ""), monthCell(7, 5, true, false, "", ""),
-    monthCell(8, 6, true, false, "", ""), monthCell(9, 7, true, false, "Call Mom", ""), monthCell(10, 8, true, false, "", ""), monthCell(11, 9, true, false, "Writing block", ""),
-    monthCell(12, 10, true, false, "", ""), monthCell(13, 11, true, false, "", ""), monthCell(14, 12, true, false, "", ""), monthCell(15, 13, true, false, "Weekly planning", ""),
-    monthCell(16, 14, true, false, "Design review", ""), monthCell(17, 15, true, true, "Deep work", "Dentist"), monthCell(18, 16, true, false, "Project review", ""),
-    monthCell(19, 17, true, false, "Ship first pass", "Dinner with Maya"), monthCell(20, 18, true, false, "Yoga", ""), monthCell(21, 19, true, false, "Weekly reset", ""),
-    monthCell(22, 20, true, false, "", ""), monthCell(23, 21, true, false, "Research", ""), monthCell(24, 22, true, false, "", ""), monthCell(25, 23, true, false, "Therapy", ""),
-    monthCell(26, 24, true, false, "", ""), monthCell(27, 25, true, false, "Farmers market", ""), monthCell(28, 26, true, false, "", ""), monthCell(29, 27, true, false, "Plan August", ""),
-    monthCell(30, 28, true, false, "", ""), monthCell(31, 29, true, false, "Deep work", ""), monthCell(32, 30, true, false, "", ""), monthCell(33, 31, true, false, "Month review", ""),
-    monthCell(34, 1, false, false, "", ""), monthCell(35, 2, false, false, "", ""),
+    monthCell(1, 29, false, false, "", ""),                                monthCell(2, 30, false, false, "", ""),                        monthCell(3, 1, true, false, "", ""),
+    monthCell(4, 2, true, false, "", ""),                                  monthCell(5, 3, true, false, "Independence Day observed", ""), monthCell(6, 4, true, false, "", ""),
+    monthCell(7, 5, true, false, "", ""),                                  monthCell(8, 6, true, false, "", ""),                          monthCell(9, 7, true, false, "Call Mom", ""),
+    monthCell(10, 8, true, false, "", ""),                                 monthCell(11, 9, true, false, "Writing block", ""),            monthCell(12, 10, true, false, "", ""),
+    monthCell(13, 11, true, false, "", ""),                                monthCell(14, 12, true, false, "", ""),                        monthCell(15, 13, true, false, "Weekly planning", ""),
+    monthCell(16, 14, true, false, "Design review", ""),                   monthCell(17, 15, true, true, "Deep work", "Dentist"),         monthCell(18, 16, true, false, "Project review", ""),
+    monthCell(19, 17, true, false, "Ship first pass", "Dinner with Maya"), monthCell(20, 18, true, false, "Yoga", ""),                    monthCell(21, 19, true, false, "Weekly reset", ""),
+    monthCell(22, 20, true, false, "", ""),                                monthCell(23, 21, true, false, "Research", ""),                monthCell(24, 22, true, false, "", ""),
+    monthCell(25, 23, true, false, "Therapy", ""),                         monthCell(26, 24, true, false, "", ""),                        monthCell(27, 25, true, false, "Farmers market", ""),
+    monthCell(28, 26, true, false, "", ""),                                monthCell(29, 27, true, false, "Plan August", ""),             monthCell(30, 28, true, false, "", ""),
+    monthCell(31, 29, true, false, "Deep work", ""),                       monthCell(32, 30, true, false, "", ""),                        monthCell(33, 31, true, false, "Month review", ""),
+    monthCell(34, 1, false, false, "", ""),                                monthCell(35, 2, false, false, "", ""),
 };
 
 fn dayHeader(id: u64, name: []const u8, day: u8, today: bool) WeekDayHeader {
