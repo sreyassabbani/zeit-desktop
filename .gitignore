@@ -1,7 +1,6 @@
 .direnv/
 .native/
 .zig-cache/
-node_modules/
 result
 zig-out/
 
