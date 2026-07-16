@@ -1,13 +1,13 @@
-<!-- Native-rendered calendar surface over the ahead-of-time compiled TS core. -->
+<!-- Native-rendered calendar surface over the ahead-of-time compiled Zig core. -->
 <template name="event-column" args="day events">
   <column grow="1" padding="4" label="{day}">
-    <for each="events" as="e" key="eventId">
-      <spacer height="{e.gapBefore}" />
+    <for each="events" as="e" key="event_id">
+      <spacer height="{e.gap_before}" />
       <if test="{e.tone == 'accent'}">
-        <list-item height="{e.height}" padding="7" gap="2" background="accent" selected="true" quiet-hover="true" on-press="select_event:{e.eventId}" label="{e.title}">
+        <list-item height="{e.height}" padding="7" gap="2" background="accent" selected="true" quiet-hover="true" on-press="select_event:{e.event_id}" label="{e.title}">
           <column gap="2" grow="1">
             <text foreground="accent_text"><span weight="bold">{e.title}</span></text>
-            <text size="sm" foreground="accent_text" wrap="false">{e.timeLabel}</text>
+            <text size="sm" foreground="accent_text" wrap="false">{e.time_label}</text>
             <if test="{e.height > 80}">
               <text size="sm" foreground="accent_text" wrap="false">{e.location}</text>
             </if>
@@ -16,10 +16,10 @@
       </if>
       <else>
         <if test="{e.tone == 'muted'}">
-          <panel height="{e.height}" padding="7" background="surface" border-color="border" radius="sm" on-press="select_event:{e.eventId}" role="listitem" label="{e.title}">
+          <panel height="{e.height}" padding="7" background="surface" border-color="border" radius="sm" on-press="select_event:{e.event_id}" role="listitem" label="{e.title}">
             <column gap="2" grow="1">
               <text><span weight="bold">{e.title}</span></text>
-              <text size="sm" foreground="text_muted" wrap="false">{e.timeLabel}</text>
+              <text size="sm" foreground="text_muted" wrap="false">{e.time_label}</text>
               <if test="{e.height > 80}">
                 <text size="sm" foreground="text_muted" wrap="false">{e.location}</text>
               </if>
@@ -27,10 +27,10 @@
           </panel>
         </if>
         <else>
-          <panel height="{e.height}" padding="7" background="surface" border-color="border" radius="sm" on-press="select_event:{e.eventId}" role="listitem" label="{e.title}">
+          <panel height="{e.height}" padding="7" background="surface" border-color="border" radius="sm" on-press="select_event:{e.event_id}" role="listitem" label="{e.title}">
             <column gap="2" grow="1">
               <text><span weight="bold">{e.title}</span></text>
-              <text size="sm" foreground="text_muted" wrap="false">{e.timeLabel}</text>
+              <text size="sm" foreground="text_muted" wrap="false">{e.time_label}</text>
               <if test="{e.height > 80}">
                 <text size="sm" foreground="text_muted" wrap="false">{e.location}</text>
               </if>
@@ -43,25 +43,25 @@
 </template>
 
 <column background="background">
-  <row height="{headerHeight}" padding="10" gap="8" cross="center" background="surface" window-drag="true" label="Calendar toolbar">
-    <spacer width="{chromeLeading}" />
+  <row height="{header_height}" padding="10" gap="8" cross="center" background="surface" window-drag="true" label="Calendar toolbar">
+    <spacer width="{chrome_leading}" />
     <button size="sm" variant="ghost" icon="panel-left" on-press="toggle_sidebar" label="Toggle sidebar"></button>
-    <button size="sm" variant="outline" selected="{atToday}" on-press="go_today">Today</button>
+    <button size="sm" variant="outline" selected="{at_today}" on-press="go_today">Today</button>
     <button-group>
-      <button size="sm" icon="chevron-left" disabled="{cannotGoPrevious}" on-press="go_previous" label="Previous period"></button>
-      <button size="sm" icon="chevron-right" disabled="{cannotGoNext}" on-press="go_next" label="Next period"></button>
+      <button size="sm" icon="chevron-left" disabled="{cannot_go_previous}" on-press="go_previous" label="Previous period"></button>
+      <button size="sm" icon="chevron-right" disabled="{cannot_go_next}" on-press="go_next" label="Next period"></button>
     </button-group>
-    <text grow="1" label="{periodLabel}"><span weight="bold" scale="1.15">{periodLabel}</span></text>
+    <text grow="1" label="{period_label}"><span weight="bold" scale="1.15">{period_label}</span></text>
     <button-group>
       <button size="sm" selected="{view == 'week'}" on-press="show_week">Week</button>
       <button size="sm" selected="{view == 'month'}" on-press="show_month">Month</button>
     </button-group>
-    <spacer width="{chromeTrailing}" />
+    <spacer width="{chrome_trailing}" />
   </row>
   <separator />
 
   <row grow="1">
-    <if test="{sidebarOpen}">
+    <if test="{sidebar_open}">
       <column width="232" padding="12" gap="14" background="surface" label="Calendar sidebar">
         <column gap="7">
           <text size="sm" foreground="text_muted">CALENDARS</text>
@@ -77,7 +77,7 @@
           </row>
           <text size="sm" foreground="text_muted" wrap="true">The same policy will drive the desktop widget and menu-bar surface.</text>
           <list label="Prioritized events" role="list">
-            <for each="widgetEvents" as="w" key="id">
+            <for each="widget_events" as="w" key="id">
               <list-item padding="7" gap="6" on-press="select_event:{w.id}" role="listitem" label="{w.title}">
                 <column gap="2" grow="1">
                   <row gap="5" cross="center">
@@ -86,7 +86,7 @@
                       <badge variant="primary">Pinned</badge>
                     </if>
                   </row>
-                  <text size="sm" foreground="text_muted">{w.timeLabel}</text>
+                  <text size="sm" foreground="text_muted">{w.time_label}</text>
                 </column>
               </list-item>
             </for>
@@ -100,7 +100,7 @@
       <if test="{view == 'week'}">
         <row height="54" background="surface">
           <spacer width="58" />
-          <for each="weekDays" as="d" key="id">
+          <for each="week_days" as="d" key="id">
             <column grow="1" gap="2" main="center" cross="center" label="{d.name}">
               <text size="sm" foreground="text_muted">{d.name}</text>
               <if test="{d.today}">
@@ -113,10 +113,10 @@
           </for>
         </row>
         <separator />
-        <scroll grow="1" value="{timelineScrollTop}" on-scroll="timeline_scrolled" label="Week timeline">
+        <scroll grow="1" value="{timeline_scroll_top}" on-scroll="timeline_scrolled" label="Week timeline">
           <row height="1152">
             <column width="58">
-              <for each="hourRows" as="h" key="id">
+              <for each="hour_rows" as="h" key="id">
                 <row height="72" padding="6" main="end">
                   <text size="sm" foreground="text_muted">{h.label}</text>
                 </row>
@@ -124,7 +124,7 @@
             </column>
             <stack grow="1">
               <column grow="1">
-                <for each="hourRows" as="h" key="id">
+                <for each="hour_rows" as="h" key="id">
                   <column height="72" label="{h.label}">
                     <separator />
                     <spacer grow="1" />
@@ -132,19 +132,19 @@
                 </for>
               </column>
               <row grow="1">
-                <use template="event-column" day="Monday" events="{mondayEvents}" />
+                <use template="event-column" day="Monday" events="{monday_events}" />
                 <separator />
-                <use template="event-column" day="Tuesday" events="{tuesdayEvents}" />
+                <use template="event-column" day="Tuesday" events="{tuesday_events}" />
                 <separator />
-                <use template="event-column" day="Wednesday" events="{wednesdayEvents}" />
+                <use template="event-column" day="Wednesday" events="{wednesday_events}" />
                 <separator />
-                <use template="event-column" day="Thursday" events="{thursdayEvents}" />
+                <use template="event-column" day="Thursday" events="{thursday_events}" />
                 <separator />
-                <use template="event-column" day="Friday" events="{fridayEvents}" />
+                <use template="event-column" day="Friday" events="{friday_events}" />
                 <separator />
-                <use template="event-column" day="Saturday" events="{saturdayEvents}" />
+                <use template="event-column" day="Saturday" events="{saturday_events}" />
                 <separator />
-                <use template="event-column" day="Sunday" events="{sundayEvents}" />
+                <use template="event-column" day="Sunday" events="{sunday_events}" />
               </row>
             </stack>
           </row>
@@ -153,35 +153,35 @@
       <else>
         <column grow="1">
           <row height="38" background="surface">
-            <for each="weekdayLabels" as="d" key="id">
+            <for each="weekday_labels" as="d" key="id">
               <column grow="1" main="center" cross="center">
                 <text size="sm" foreground="text_muted">{d.name}</text>
               </column>
             </for>
           </row>
           <separator />
-          <if test="{hasMonthData}">
+          <if test="{has_month_data}">
             <scroll grow="1" label="Month grid">
               <grid columns="7" gap="1" background="border">
-                <for each="monthCells" as="cell" key="id">
+                <for each="month_cells" as="cell" key="id">
                   <if test="{cell.today}">
                     <list-item height="122" padding="8" gap="6" background="surface" selected="true" quiet-hover="true" label="Today, July {cell.day}">
                       <column gap="5" grow="1">
                         <row>
                           <badge variant="primary">{cell.day}</badge>
                         </row>
-                        <if test="{cell.hasEvent1}"><badge variant="primary">{cell.event1}</badge></if>
-                        <if test="{cell.hasEvent2}"><badge variant="secondary">{cell.event2}</badge></if>
+                        <if test="{cell.has_event1}"><badge variant="primary">{cell.event1}</badge></if>
+                        <if test="{cell.has_event2}"><badge variant="secondary">{cell.event2}</badge></if>
                       </column>
                     </list-item>
                   </if>
                   <else>
                     <list-item height="122" padding="8" gap="6" background="surface" quiet-hover="true" label="Day {cell.day}">
                       <column gap="5" grow="1">
-                        <if test="{cell.inMonth}"><text>{cell.day}</text></if>
+                        <if test="{cell.in_month}"><text>{cell.day}</text></if>
                         <else><text foreground="text_muted">{cell.day}</text></else>
-                        <if test="{cell.hasEvent1}"><badge variant="secondary">{cell.event1}</badge></if>
-                        <if test="{cell.hasEvent2}"><badge variant="secondary">{cell.event2}</badge></if>
+                        <if test="{cell.has_event1}"><badge variant="secondary">{cell.event1}</badge></if>
+                        <if test="{cell.has_event2}"><badge variant="secondary">{cell.event2}</badge></if>
                       </column>
                     </list-item>
                   </else>
@@ -201,5 +201,5 @@
     </column>
   </row>
   <separator />
-  <status-bar>Selected: {selectionTitle}</status-bar>
+  <status-bar>Selected: {selection_title}</status-bar>
 </column>
