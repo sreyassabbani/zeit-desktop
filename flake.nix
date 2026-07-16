@@ -10,7 +10,8 @@
     };
   };
 
-  outputs = inputs@{ nixpkgs, flake-utils, ... }:
+  outputs =
+    inputs@{ nixpkgs, flake-utils, ... }:
     flake-utils.lib.eachDefaultSystem (
       system:
       let
@@ -41,12 +42,12 @@
       in
       {
         devShells.default = pkgs.mkShell {
-          packages = [
+          packages = with pkgs; [
             nativeCli
-            pkgs.git
-            pkgs.jq
-            pkgs.ripgrep
-            pkgs.zig
+            git
+            jq
+            ripgrep
+            zig
           ];
 
           shellHook = ''
