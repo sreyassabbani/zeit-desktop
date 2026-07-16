@@ -12,9 +12,15 @@ native doctor
 native dev -Dtrace=off
 ```
 
+The command above keeps Debug hot reload. Judge scroll and rendering performance with the optimized app instead:
+
+```sh
+native dev -Doptimize=ReleaseFast -Dtrace=off
+```
+
 Use `nix develop` in environments without direnv. The flake pins Zig and builds the Native SDK 0.5.1 CLI directly from its pinned source; no package-manager install step is required.
 
-Native SDK development builds default to `-Dtrace=events`, which prints every runtime input, frame, and timer event. Zeit's normal development command turns that firehose off; use `native dev -Dtrace=events` only while diagnosing the event loop.
+Native SDK development builds default to `-Dtrace=events`, which prints every runtime input, frame, and timer event. Zeit's normal development commands turn that firehose off; use `native dev -Dtrace=events` only while diagnosing the event loop. Debug also carries runtime markup and hot-reload machinery, so it is intentionally not the performance baseline.
 
 ## Verify
 
