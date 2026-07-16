@@ -8,7 +8,6 @@ const native_sdk = @import("native_sdk");
 
 const calendar = @import("domain/calendar.zig");
 const civil = @import("domain/civil_date.zig");
-const ranking = @import("domain/surface_ranking.zig");
 const fixtures = @import("fixtures.zig");
 
 pub const panic = std.debug.FullPanic(native_sdk.debug.capturePanic);
@@ -16,17 +15,17 @@ pub const panic = std.debug.FullPanic(native_sdk.debug.capturePanic);
 const canvas = native_sdk.canvas;
 const geometry = native_sdk.geometry;
 
-pub const header_natural_height: f32 = 52;
-const sidebar_natural_width: f32 = 232;
+pub const header_natural_height: f32 = 48;
+const sidebar_natural_width: f32 = 204;
 const separator_extent: f32 = 1;
 const initial_surface_width: f32 = 1380;
 const initial_surface_height: f32 = 860;
-const time_gutter_width: f32 = 58;
+const time_gutter_width: f32 = 52;
 const calendar_page_count: usize = 5;
 const calendar_page_count_extent: f32 = 5;
 const recycler_center_slot: i32 = 2;
 const recycler_center_extent: f32 = 2;
-const month_page_extent: f32 = 778;
+const month_page_extent: f32 = 772;
 const initial_week_page_width = initial_surface_width - sidebar_natural_width - separator_extent - time_gutter_width;
 const fixture_week_monday: civil.CivilDate = .{ .year = 2026, .month = 7, .day = 13 };
 const fixture_month: civil.YearMonth = .{ .year = 2026, .month = 7 };
@@ -55,13 +54,6 @@ const shell_windows = [_]native_sdk.ShellWindow{.{
 pub const shell_scene: native_sdk.ShellConfig = .{ .windows = &shell_windows };
 
 pub const CalendarView = enum { week, month };
-
-pub const WidgetEvent = struct {
-    id: u64,
-    title: []const u8,
-    time_label: []const u8,
-    pinned: bool,
-};
 
 pub const ViewportSize = struct {
     width: f32,
@@ -107,8 +99,9 @@ pub const Msg = union(enum) {
     recycle_month_backward,
     recycle_month_forward,
     settle_scroll_override,
+    appearance_changed: native_sdk.Appearance,
 
-    pub const view_unbound = .{ "chrome_changed", "viewport_changed", "settle_scroll_override" };
+    pub const view_unbound = .{ "chrome_changed", "viewport_changed", "settle_scroll_override", "appearance_changed" };
 };
 
 pub const Model = struct {
@@ -132,6 +125,7 @@ pub const Model = struct {
     week_scroll_override: bool = false,
     month_scroll_override: bool = false,
     scroll_override_phase: ScrollOverridePhase = .idle,
+    appearance: native_sdk.Appearance = .{},
 
     // These are intentionally private to derived bindings and update().
     pub const view_unbound = .{
@@ -146,6 +140,7 @@ pub const Model = struct {
         "week_scroll_override",
         "month_scroll_override",
         "scroll_override_phase",
+        "appearance",
     };
 
     pub fn period_label(model: *const Model, arena: std.mem.Allocator) []const u8 {
@@ -207,31 +202,37 @@ pub const Model = struct {
         return pages;
     }
 
-    pub fn widget_events(model: *const Model, arena: std.mem.Allocator) []const WidgetEvent {
-        const rank_buffer = arena.alloc(ranking.RankedSurfaceEvent, fixtures.calendar_events.len) catch return &.{};
-        const ranked = ranking.rankEventsForSurface(&fixtures.calendar_events, fixtures.widget_rule, fixtures.fixture_now_ms, rank_buffer) catch return &.{};
-        const visible = arena.alloc(WidgetEvent, ranked.len) catch return &.{};
-        var visible_count: usize = 0;
-
-        for (ranked) |item| {
-            const event = eventById(item.event_id) orelse continue;
-            if (!model.calendarVisible(event.calendar_id)) continue;
-            const block = blockByEventId(event.id) orelse continue;
-            visible[visible_count] = .{
-                .id = event.id,
-                .title = event.title,
-                .time_label = block.time_label,
-                .pinned = ranking.overrideForSurface(event, .desktop_widget) == .pin,
-            };
-            visible_count += 1;
+    pub fn status_summary(model: *const Model, arena: std.mem.Allocator) []const u8 {
+        if (model.selected_event_id) |selected| {
+            const event = eventById(selected) orelse return "Event unavailable";
+            const block = blockByEventId(selected) orelse return event.title;
+            const calendar_name = calendarName(event.calendar_id);
+            const widget_policy = surfacePolicyLabel(event.surfaces.desktop_widget);
+            return std.fmt.allocPrint(arena, "{s}  ·  {s}  ·  {s}  ·  Widget {s}", .{
+                event.title,
+                block.time_label,
+                calendar_name,
+                widget_policy,
+            }) catch event.title;
         }
-        return visible[0..visible_count];
-    }
 
-    pub fn selection_title(model: *const Model) []const u8 {
-        const selected = model.selected_event_id orelse return "Select an event to inspect it";
-        const event = eventById(selected) orelse return "Event unavailable";
-        return event.title;
+        var visible_calendars: usize = 0;
+        var visible_events: usize = 0;
+        for (model.calendars) |item| {
+            if (item.visible) visible_calendars += 1;
+        }
+        for (fixtures.week_event_blocks) |event| {
+            if (model.calendarVisible(event.calendar_id)) visible_events += 1;
+        }
+        const view_label = switch (model.view) {
+            .week => "Week",
+            .month => "Month",
+        };
+        return std.fmt.allocPrint(arena, "{s} view  ·  {d} events  ·  {d} calendars", .{
+            view_label,
+            visible_events,
+            visible_calendars,
+        }) catch view_label;
     }
 
     fn calendarVisible(model: *const Model, calendar_id: u64) bool {
@@ -387,7 +388,12 @@ pub fn update(model: *Model, msg: Msg) void {
                 model.scroll_override_phase = .idle;
             },
         },
+        .appearance_changed => |appearance| model.appearance = appearance,
     }
+}
+
+pub fn onAppearance(appearance: native_sdk.Appearance) ?Msg {
+    return .{ .appearance_changed = appearance };
 }
 
 pub fn onChrome(chrome: native_sdk.WindowChrome) ?Msg {
@@ -468,6 +474,36 @@ fn blockByEventId(id: u64) ?fixtures.WeekEventBlock {
     return null;
 }
 
+fn calendarName(id: u64) []const u8 {
+    for (fixtures.calendar_visibility) |item| if (item.id == id) return item.name;
+    return "Unknown calendar";
+}
+
+fn surfacePolicyLabel(policy: calendar.SurfaceOverride) []const u8 {
+    return switch (policy) {
+        .inherit => "automatic",
+        .pin => "pinned",
+        .hide => "hidden",
+    };
+}
+
+fn tokensFromModel(model: *const Model) canvas.DesignTokens {
+    var tokens = canvas.DesignTokens.theme(.{
+        .pack = .geist,
+        .color_scheme = switch (model.appearance.color_scheme) {
+            .light => .light,
+            .dark => .dark,
+        },
+        .contrast = if (model.appearance.high_contrast) .high else .standard,
+        .density = .compact,
+        .reduce_motion = model.appearance.reduce_motion,
+    });
+    if (!model.appearance.high_contrast) {
+        tokens = tokens.withOverrides(canvas.accentOverrides(canvas.Color.rgb8(95, 99, 216)));
+    }
+    return tokens;
+}
+
 // Release builds compile markup at comptime. Debug keeps the interpreter only
 // for file watching and swaps to it after the first hot-reload edit.
 pub const AppUi = canvas.Ui(Msg);
@@ -485,6 +521,7 @@ pub fn main(init: std.process.Init) !void {
         .canvas_label = canvas_label,
         .update = update,
         .on_chrome = onChrome,
+        .on_appearance = onAppearance,
         .on_frame = onFrame,
         .sync = syncRuntimeState,
         .view = CompiledZeitView.build,
@@ -492,8 +529,7 @@ pub fn main(init: std.process.Init) !void {
             .{ .source = app_markup, .watch_path = "src/app.native", .io = init.io }
         else
             null,
-        .theme = .geist,
-        .theme_accent = canvas.Color.rgb8(95, 99, 216),
+        .tokens_fn = tokensFromModel,
     });
     defer app_state.deinit();
 

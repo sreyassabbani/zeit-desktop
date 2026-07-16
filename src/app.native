@@ -4,9 +4,9 @@
     <for each="events" as="e" key="event_id">
       <spacer height="{e.gap_before}" />
       <if test="{e.tone == 'accent'}">
-        <list-item height="{e.height}" padding="7" gap="2" background="accent" selected="true" quiet-hover="true" on-press="select_event:{e.event_id}" label="{e.title}">
+        <list-item height="{e.height}" padding="6" gap="2" background="accent" selected="true" quiet-hover="true" on-press="select_event:{e.event_id}" label="{e.title}">
           <column gap="2" grow="1">
-            <text foreground="accent_text"><span weight="bold">{e.title}</span></text>
+            <text size="sm" foreground="accent_text"><span weight="medium">{e.title}</span></text>
             <text size="sm" foreground="accent_text" wrap="false">{e.time_label}</text>
             <if test="{e.height > 80}">
               <text size="sm" foreground="accent_text" wrap="false">{e.location}</text>
@@ -16,9 +16,9 @@
       </if>
       <else>
         <if test="{e.tone == 'muted'}">
-          <panel height="{e.height}" padding="7" background="surface" border-color="border" radius="sm" on-press="select_event:{e.event_id}" role="listitem" label="{e.title}">
+          <panel height="{e.height}" padding="6" background="surface" border-color="border" radius="sm" on-press="select_event:{e.event_id}" role="listitem" label="{e.title}">
             <column gap="2" grow="1">
-              <text><span weight="bold">{e.title}</span></text>
+              <text size="sm"><span weight="medium">{e.title}</span></text>
               <text size="sm" foreground="text_muted" wrap="false">{e.time_label}</text>
               <if test="{e.height > 80}">
                 <text size="sm" foreground="text_muted" wrap="false">{e.location}</text>
@@ -27,9 +27,9 @@
           </panel>
         </if>
         <else>
-          <panel height="{e.height}" padding="7" background="surface" border-color="border" radius="sm" on-press="select_event:{e.event_id}" role="listitem" label="{e.title}">
+          <panel height="{e.height}" padding="6" background="surface" border-color="border" radius="sm" on-press="select_event:{e.event_id}" role="listitem" label="{e.title}">
             <column gap="2" grow="1">
-              <text><span weight="bold">{e.title}</span></text>
+              <text size="sm"><span weight="medium">{e.title}</span></text>
               <text size="sm" foreground="text_muted" wrap="false">{e.time_label}</text>
               <if test="{e.height > 80}">
                 <text size="sm" foreground="text_muted" wrap="false">{e.location}</text>
@@ -43,7 +43,7 @@
 </template>
 
 <template name="week-header" args="label days">
-  <row width="{week_page_width}" height="54" background="surface" label="{label}">
+  <row width="{week_page_width}" height="46" background="surface" label="{label}">
     <for each="days" as="d" key="id">
       <column grow="1" gap="2" main="center" cross="center" label="{d.name}">
         <text size="sm" foreground="text_muted">{d.name}</text>
@@ -51,7 +51,7 @@
           <badge variant="primary">{d.day}</badge>
         </if>
         <else>
-          <text>{d.day}</text>
+          <text size="sm"><span weight="medium">{d.day}</span></text>
         </else>
       </column>
     </for>
@@ -88,15 +88,15 @@
 
 <template name="month-page" args="label cells">
   <column height="{month_page_height}" label="{label}">
-    <row height="40" padding="8" cross="center" background="surface">
-      <text><span weight="bold">{label}</span></text>
+    <row height="34" padding="6" cross="center" background="surface">
+      <text size="sm"><span weight="medium">{label}</span></text>
     </row>
     <separator />
     <grid columns="7" gap="1" background="border">
       <for each="cells" as="cell" key="id">
         <if test="{cell.today}">
-          <list-item height="122" padding="8" gap="6" background="surface" selected="true" quiet-hover="true" label="Today, July {cell.day}">
-            <column gap="5" grow="1">
+          <list-item height="122" padding="6" gap="4" background="surface" selected="true" quiet-hover="true" label="Today, July {cell.day}">
+            <column gap="4" grow="1">
               <row>
                 <badge variant="primary">{cell.day}</badge>
               </row>
@@ -106,10 +106,10 @@
           </list-item>
         </if>
         <else>
-          <list-item height="122" padding="8" gap="6" background="surface" quiet-hover="true" label="{label}">
-            <column gap="5" grow="1">
-              <if test="{cell.in_month}"><text>{cell.day}</text></if>
-              <else><text foreground="text_muted">{cell.day}</text></else>
+          <list-item height="122" padding="6" gap="4" background="surface" quiet-hover="true" label="{label}">
+            <column gap="4" grow="1">
+              <if test="{cell.in_month}"><text size="sm">{cell.day}</text></if>
+              <else><text size="sm" foreground="text_muted">{cell.day}</text></else>
               <if test="{cell.has_event1}"><badge variant="secondary">{cell.event1}</badge></if>
               <if test="{cell.has_event2}"><badge variant="secondary">{cell.event2}</badge></if>
             </column>
@@ -121,11 +121,11 @@
 </template>
 
 <column background="background">
-  <row height="{header_height}" padding="10" gap="8" cross="center" background="surface" window-drag="true" label="Calendar toolbar">
+  <row height="{header_height}" padding="8" gap="6" cross="center" background="surface" window-drag="true" label="Calendar toolbar">
     <spacer width="{chrome_leading}" />
     <button size="sm" variant="ghost" icon="panel-left" on-press="toggle_sidebar" label="Toggle sidebar"></button>
     <button size="sm" variant="outline" on-press="go_today">Today</button>
-    <text grow="1" label="{period_label}"><span weight="bold" scale="1.15">{period_label}</span></text>
+    <text grow="1" label="{period_label}"><span weight="medium">{period_label}</span></text>
     <button-group>
       <button size="sm" selected="{view == 'week'}" on-press="show_week">Week</button>
       <button size="sm" selected="{view == 'month'}" on-press="show_month">Month</button>
@@ -136,35 +136,12 @@
 
   <row grow="1">
     <if test="{sidebar_open}">
-      <column width="232" padding="12" gap="14" background="surface" label="Calendar sidebar">
-        <column gap="7">
+      <column width="204" padding="10" background="surface" label="Calendar sidebar">
+        <column gap="5">
           <text size="sm" foreground="text_muted">CALENDARS</text>
           <for each="calendars" as="c" key="id">
             <switch checked="{c.visible}" on-toggle="toggle_calendar:{c.id}" label="{c.name}">{c.name}</switch>
           </for>
-        </column>
-        <separator />
-        <column gap="7" grow="1">
-          <row cross="center" gap="6">
-            <text size="sm" foreground="text_muted" grow="1">WIDGET PREVIEW</text>
-            <badge variant="secondary">ranked</badge>
-          </row>
-          <text size="sm" foreground="text_muted" wrap="true">The same policy will drive the desktop widget and menu-bar surface.</text>
-          <list label="Prioritized events" role="list">
-            <for each="widget_events" as="w" key="id">
-              <list-item padding="7" gap="6" on-press="select_event:{w.id}" role="listitem" label="{w.title}">
-                <column gap="2" grow="1">
-                  <row gap="5" cross="center">
-                    <text wrap="false" grow="1">{w.title}</text>
-                    <if test="{w.pinned}">
-                      <badge variant="primary">Pinned</badge>
-                    </if>
-                  </row>
-                  <text size="sm" foreground="text_muted">{w.time_label}</text>
-                </column>
-              </list-item>
-            </for>
-          </list>
         </column>
       </column>
       <separator />
@@ -173,8 +150,8 @@
     <column grow="1">
       <if test="{view == 'week'}">
         <column grow="1">
-          <row height="54" background="surface">
-            <column width="58" background="surface" />
+          <row height="46" background="surface">
+            <column width="52" background="surface" />
             <scroll axis="horizontal" value="{week_scroll_offset}" scroll-sync-group="1" grow="1" label="Week header pages" on-reach-start="recycle_week_backward" on-reach-end="recycle_week_forward">
               <row width="{week_track_width}">
                 <for each="week_pages" as="p" key="slot_id">
@@ -185,10 +162,10 @@
           </row>
           <separator />
           <row grow="1">
-            <scroll value="{week_vertical_offset}" scroll-sync-group="2" width="58" label="Time gutter">
+            <scroll value="{week_vertical_offset}" scroll-sync-group="2" width="52" label="Time gutter">
               <column height="1152">
                 <for each="hour_rows" as="h" key="id">
-                  <row height="72" padding="6" main="end">
+                  <row height="72" padding="4" main="end">
                     <text size="sm" foreground="text_muted">{h.label}</text>
                   </row>
                 </for>
@@ -208,7 +185,7 @@
       </if>
       <else>
         <column grow="1">
-          <row height="38" background="surface">
+          <row height="32" background="surface">
             <for each="weekday_labels" as="d" key="id">
               <column grow="1" main="center" cross="center">
                 <text size="sm" foreground="text_muted">{d.name}</text>
@@ -228,5 +205,5 @@
     </column>
   </row>
   <separator />
-  <status-bar>Selected: {selection_title}</status-bar>
+  <status-bar>{status_summary}</status-bar>
 </column>
