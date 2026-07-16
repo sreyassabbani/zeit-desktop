@@ -28,6 +28,24 @@ index f28452a..f3cdd7c 100644
  @end
  
  /* Captures the selected item id of a context-menu popUp; NSMenuItem
+@@ -3021,7 +3022,16 @@ - (NSView *)hitTest:(NSPoint)point {
+     NSView *hit = [super hitTest:point];
+     if (!hit) return nil;
+     NSEvent *current = NSApp.currentEvent;
+-    if (current && current.type == NSEventTypeScrollWheel) return hit;
++    if (current && current.type == NSEventTypeScrollWheel) {
++        // Nested horizontal and vertical drivers occupy the same frame.
++        // Only claim gestures on this driver's axis so AppKit can continue
++        // hit-testing the sibling driver beneath us for the other axis.
++        const double deltaX = current.scrollingDeltaX;
++        const double deltaY = current.scrollingDeltaY;
++        if (deltaX == 0 && deltaY == 0) return nil;
++        const BOOL horizontal = fabs(deltaX) > fabs(deltaY);
++        return horizontal == self.horizontal ? hit : nil;
++    }
+     NSView *candidate = hit;
+     while (candidate && candidate != self) {
+         if ([candidate isKindOfClass:[NSScroller class]]) return hit;
 @@ -5750,11 +5751,8 @@ static BOOL NativeSdkCompositeBlurWriteRegion(NSDictionary *command, CGFloat sca
              driver = [[NativeSdkScrollDriverView alloc] initWithFrame:NSMakeRect(0, 0, MAX(desired.width, 1), MAX(desired.height, 1))];
              driver.driverId = desired.driver_id;
@@ -55,7 +73,7 @@ index f28452a..f3cdd7c 100644
          NSRect target = NSMakeRect(desired.x, self.bounds.size.height - desired.y - desired.height, desired.width, desired.height);
          if (!NSEqualRects(driver.frame, target)) driver.frame = target;
          NSSize contentSize = NSMakeSize(MAX(desired.content_width, 1), MAX(desired.content_height, 1));
-@@ -5782,31 +5785,43 @@ static BOOL NativeSdkCompositeBlurWriteRegion(NSDictionary *command, CGFloat sca
+@@ -5782,31 +5785,44 @@ static BOOL NativeSdkCompositeBlurWriteRegion(NSDictionary *command, CGFloat sca
  
  - (void)applyScrollDriverOffset:(NativeSdkScrollDriverView *)driver offsetY:(double)offsetY {
      self.applyingScrollDriverOffset = YES;
@@ -92,12 +110,14 @@ index f28452a..f3cdd7c 100644
 -        return [self scrollDriverForPoint:[self convertPoint:event.locationInWindow fromView:nil]];
 +        return [self scrollDriverForPoint:point horizontal:horizontal];
      }
-     if (event.phase == NSEventPhaseBegan || event.phase == NSEventPhaseMayBegin) {
+-    if (event.phase == NSEventPhaseBegan || event.phase == NSEventPhaseMayBegin) {
++    const BOOL hasDirection = event.scrollingDeltaX != 0 || event.scrollingDeltaY != 0;
++    if ((event.phase == NSEventPhaseBegan || event.phase == NSEventPhaseMayBegin) && hasDirection) {
          // Lock the gesture to the region under the pointer so momentum
          // keeps scrolling it after the pointer wanders.
 -        self.activeWheelDriver = [self scrollDriverForPoint:[self convertPoint:event.locationInWindow fromView:nil]];
 +        self.activeWheelDriver = [self scrollDriverForPoint:point horizontal:horizontal];
-+    } else if (!self.activeWheelDriver && (event.scrollingDeltaX != 0 || event.scrollingDeltaY != 0)) {
++    } else if (!self.activeWheelDriver && hasDirection) {
 +        // Some devices begin with a zero-delta mayBegin phase. Lock on the
 +        // first directional sample instead of guessing the nested axis.
 +        self.activeWheelDriver = [self scrollDriverForPoint:point horizontal:horizontal];
