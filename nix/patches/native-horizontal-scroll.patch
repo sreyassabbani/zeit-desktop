@@ -1,0 +1,696 @@
+diff --git a/src/platform/macos/appkit_host.h b/src/platform/macos/appkit_host.h
+index f004aa9..988923b 100644
+--- a/src/platform/macos/appkit_host.h
++++ b/src/platform/macos/appkit_host.h
+@@ -554,10 +554,12 @@ typedef struct {
+     double height;
+     double content_width;
+     double content_height;
++    /* 0 = vertical, nonzero = horizontal. */
++    int horizontal;
+     double offset_y;
+     int set_offset;
+     /* Edge behavior: 0 pins scrolling at the content edges, nonzero lets
+-     * the scroller bounce past them (vertical elasticity). */
++     * the scroller bounce past them on its selected axis. */
+     int rubber_band;
+ } native_sdk_appkit_scroll_driver_t;
+ 
+diff --git a/src/platform/macos/appkit_host.m b/src/platform/macos/appkit_host.m
+index f28452a..f3cdd7c 100644
+--- a/src/platform/macos/appkit_host.m
++++ b/src/platform/macos/appkit_host.m
+@@ -329,6 +329,7 @@ static NSMutableDictionary *NativeSdkCredentialQuery(NSString *service, NSString
+  * overlay knob stays grabbable). */
+ @interface NativeSdkScrollDriverView : NSScrollView
+ @property(nonatomic, assign) uint64_t driverId;
++@property(nonatomic, assign) BOOL horizontal;
+ @end
+ 
+ /* Captures the selected item id of a context-menu popUp; NSMenuItem
+@@ -5750,11 +5751,8 @@ static BOOL NativeSdkCompositeBlurWriteRegion(NSDictionary *command, CGFloat sca
+             driver = [[NativeSdkScrollDriverView alloc] initWithFrame:NSMakeRect(0, 0, MAX(desired.width, 1), MAX(desired.height, 1))];
+             driver.driverId = desired.driver_id;
+             driver.drawsBackground = NO;
+-            driver.hasVerticalScroller = YES;
+-            driver.hasHorizontalScroller = NO;
+             driver.scrollerStyle = NSScrollerStyleOverlay;
+             driver.autohidesScrollers = YES;
+-            driver.horizontalScrollElasticity = NSScrollElasticityNone;
+             driver.automaticallyAdjustsContentInsets = NO;
+             NativeSdkScrollDriverDocumentView *document = [[NativeSdkScrollDriverDocumentView alloc] initWithFrame:NSMakeRect(0, 0, MAX(desired.content_width, 1), MAX(desired.content_height, 1))];
+             driver.documentView = document;
+@@ -5768,8 +5766,13 @@ static BOOL NativeSdkCompositeBlurWriteRegion(NSDictionary *command, CGFloat sca
+         // Elasticity rides the same reconcile: a region's edge behavior
+         // (pin at the edges vs bounce past them) is per-region state the
+         // runtime owns.
++        const BOOL horizontal = desired.horizontal != 0;
++        driver.horizontal = horizontal;
++        driver.hasHorizontalScroller = horizontal;
++        driver.hasVerticalScroller = !horizontal;
+         NSScrollElasticity elasticity = desired.rubber_band ? NSScrollElasticityAllowed : NSScrollElasticityNone;
+-        if (driver.verticalScrollElasticity != elasticity) driver.verticalScrollElasticity = elasticity;
++        driver.horizontalScrollElasticity = horizontal ? elasticity : NSScrollElasticityNone;
++        driver.verticalScrollElasticity = horizontal ? NSScrollElasticityNone : elasticity;
+         NSRect target = NSMakeRect(desired.x, self.bounds.size.height - desired.y - desired.height, desired.width, desired.height);
+         if (!NSEqualRects(driver.frame, target)) driver.frame = target;
+         NSSize contentSize = NSMakeSize(MAX(desired.content_width, 1), MAX(desired.content_height, 1));
+@@ -5782,31 +5785,37 @@ static BOOL NativeSdkCompositeBlurWriteRegion(NSDictionary *command, CGFloat sca
+ 
+ - (void)applyScrollDriverOffset:(NativeSdkScrollDriverView *)driver offsetY:(double)offsetY {
+     self.applyingScrollDriverOffset = YES;
+-    [driver.contentView setBoundsOrigin:NSMakePoint(0, offsetY)];
++    [driver.contentView setBoundsOrigin:driver.horizontal ? NSMakePoint(offsetY, 0) : NSMakePoint(0, offsetY)];
+     [driver reflectScrolledClipView:driver.contentView];
+     self.applyingScrollDriverOffset = NO;
+ }
+ 
+-- (NativeSdkScrollDriverView *)scrollDriverForPoint:(NSPoint)viewPoint {
++- (NativeSdkScrollDriverView *)scrollDriverForPoint:(NSPoint)viewPoint horizontal:(BOOL)horizontal {
+     // Driver specs arrive in layout pre-order, so the LAST hit is the
+     // deepest scroll region under the pointer.
+     NativeSdkScrollDriverView *result = nil;
+     for (NativeSdkScrollDriverView *driver in self.scrollDrivers) {
+-        if (NSPointInRect(viewPoint, driver.frame)) result = driver;
++        if (driver.horizontal == horizontal && NSPointInRect(viewPoint, driver.frame)) result = driver;
+     }
+     return result;
+ }
+ 
+ - (NativeSdkScrollDriverView *)scrollDriverForWheelEvent:(NSEvent *)event {
+     if (self.scrollDrivers.count == 0) return nil;
++    const BOOL horizontal = fabs(event.scrollingDeltaX) > fabs(event.scrollingDeltaY);
++    const NSPoint point = [self convertPoint:event.locationInWindow fromView:nil];
+     const BOOL legacy = event.phase == NSEventPhaseNone && event.momentumPhase == NSEventPhaseNone;
+     if (legacy) {
+-        return [self scrollDriverForPoint:[self convertPoint:event.locationInWindow fromView:nil]];
++        return [self scrollDriverForPoint:point horizontal:horizontal];
+     }
+     if (event.phase == NSEventPhaseBegan || event.phase == NSEventPhaseMayBegin) {
+         // Lock the gesture to the region under the pointer so momentum
+         // keeps scrolling it after the pointer wanders.
+-        self.activeWheelDriver = [self scrollDriverForPoint:[self convertPoint:event.locationInWindow fromView:nil]];
++        self.activeWheelDriver = [self scrollDriverForPoint:point horizontal:horizontal];
++    } else if (!self.activeWheelDriver && (event.scrollingDeltaX != 0 || event.scrollingDeltaY != 0)) {
++        // Some devices begin with a zero-delta mayBegin phase. Lock on the
++        // first directional sample instead of guessing the nested axis.
++        self.activeWheelDriver = [self scrollDriverForPoint:point horizontal:horizontal];
+     }
+     NativeSdkScrollDriverView *driver = self.activeWheelDriver;
+     if (event.momentumPhase == NSEventPhaseEnded || event.momentumPhase == NSEventPhaseCancelled) {
+@@ -5820,7 +5829,8 @@ static BOOL NativeSdkCompositeBlurWriteRegion(NSDictionary *command, CGFloat sca
+     NSClipView *clipView = note.object;
+     for (NativeSdkScrollDriverView *driver in self.scrollDrivers) {
+         if (driver.contentView != clipView) continue;
+-        [self queueScrollDriverEventWithId:driver.driverId offsetY:clipView.bounds.origin.y];
++        const double offset = driver.horizontal ? clipView.bounds.origin.x : clipView.bounds.origin.y;
++        [self queueScrollDriverEventWithId:driver.driverId offsetY:offset];
+         return;
+     }
+ }
+diff --git a/src/platform/macos/root.zig b/src/platform/macos/root.zig
+index 83b579b..a53d3ce 100644
+--- a/src/platform/macos/root.zig
++++ b/src/platform/macos/root.zig
+@@ -210,6 +210,7 @@ const AppKitScrollDriver = extern struct {
+     height: f64,
+     content_width: f64,
+     content_height: f64,
++    horizontal: c_int,
+     offset_y: f64,
+     set_offset: c_int,
+     rubber_band: c_int,
+@@ -1337,6 +1338,7 @@ fn setGpuSurfaceScrollDrivers(context: ?*anyopaque, window_id: platform_mod.Wind
+             .height = driver.frame.height,
+             .content_width = driver.content_size.width,
+             .content_height = driver.content_size.height,
++            .horizontal = if (driver.axis == .horizontal) 1 else 0,
+             .offset_y = driver.offset_y,
+             .set_offset = if (driver.set_offset) 1 else 0,
+             .rubber_band = if (driver.rubber_band) 1 else 0,
+diff --git a/src/platform/root.zig b/src/platform/root.zig
+index c8bdad3..010414d 100644
+--- a/src/platform/root.zig
++++ b/src/platform/root.zig
+@@ -141,6 +141,7 @@ pub const GpuSurfaceInputKind = types.GpuSurfaceInputKind;
+ pub const GpuSurfaceInputEvent = types.GpuSurfaceInputEvent;
+ pub const max_gpu_surface_scroll_drivers = types.max_gpu_surface_scroll_drivers;
+ pub const GpuSurfaceScrollDriver = types.GpuSurfaceScrollDriver;
++pub const GpuSurfaceScrollAxis = types.GpuSurfaceScrollAxis;
+ pub const GpuSurfaceScrollDriverEvent = types.GpuSurfaceScrollDriverEvent;
+ pub const max_context_menu_items = types.max_context_menu_items;
+ pub const ContextMenuItem = types.ContextMenuItem;
+diff --git a/src/platform/types.zig b/src/platform/types.zig
+index 69acc8b..5d6a004 100644
+--- a/src/platform/types.zig
++++ b/src/platform/types.zig
+@@ -1574,6 +1574,11 @@ pub const GpuSurfaceInputEvent = struct {
+ /// scrollable canvas region).
+ pub const max_gpu_surface_scroll_drivers: usize = 16;
+ 
++pub const GpuSurfaceScrollAxis = enum(u8) {
++    vertical,
++    horizontal,
++};
++
+ /// One native scroll driver's desired state, pushed by the runtime on
+ /// every widget-layout install and every presented frame (self-healing
+ /// against host-side relayouts). Coordinates are view-local canvas points
+@@ -1587,7 +1592,11 @@ pub const GpuSurfaceScrollDriver = struct {
+     /// Total scrollable content size for the region. The vertical max
+     /// scroll offset is `content_size.height - frame.height`.
+     content_size: geometry.SizeF,
+-    /// The runtime's current scroll offset (canvas points, y-down).
++    /// Physical axis the invisible OS scroller owns.
++    axis: GpuSurfaceScrollAxis = .vertical,
++    /// The runtime's current scalar scroll offset in canvas points. The
++    /// historical field name is retained for ABI/source compatibility;
++    /// horizontal drivers interpret it as x.
+     offset_y: f32 = 0,
+     /// True when the runtime changed the offset from a non-driver source
+     /// (keyboard scroll, programmatic scroll, rebuild clamp): the host
+@@ -1596,7 +1605,7 @@ pub const GpuSurfaceScrollDriver = struct {
+     set_offset: bool = false,
+     /// Edge behavior for this region's native scroller: false (the
+     /// default) pins scrolling at the content edges, true lets the OS
+-    /// scroller bounce past them (vertical elasticity). Reconciled on
++    /// scroller bounce past them (elasticity on the selected axis). Reconciled on
+     /// every push like the frame and content size.
+     rubber_band: bool = false,
+ };
+diff --git a/src/primitives/canvas/events.zig b/src/primitives/canvas/events.zig
+index 8f9811a..3d7f308 100644
+--- a/src/primitives/canvas/events.zig
++++ b/src/primitives/canvas/events.zig
+@@ -568,16 +568,22 @@ pub fn widgetScrollKeyboardIntent(widget: Widget, keyboard: WidgetKeyboardEvent)
+ pub fn widgetScrollKeyboardDelta(widget: Widget, keyboard: WidgetKeyboardEvent) ?f32 {
+     if (keyboard.phase != .key_down or keyboard.modifiers.hasNavigationModifier()) return null;
+     const viewport = widget.frame.inset(widget.layout.padding).normalized();
+-    const line_step = @max(24, viewport.height * 0.35);
+-    const page_step = @max(line_step, viewport.height * 0.85);
+-    if (std.ascii.eqlIgnoreCase(keyboard.key, "arrowleft") or std.ascii.eqlIgnoreCase(keyboard.key, "arrowup")) {
++    const horizontal = widget.kind == .scroll_view and widget.scroll_axis == .horizontal;
++    const viewport_extent = if (horizontal) viewport.width else viewport.height;
++    const line_step = @max(24, viewport_extent * 0.35);
++    const page_step = @max(line_step, viewport_extent * 0.85);
++    if ((horizontal and std.ascii.eqlIgnoreCase(keyboard.key, "arrowleft")) or
++        (!horizontal and std.ascii.eqlIgnoreCase(keyboard.key, "arrowup")))
++    {
+         return -line_step;
+     }
+-    if (std.ascii.eqlIgnoreCase(keyboard.key, "arrowright") or std.ascii.eqlIgnoreCase(keyboard.key, "arrowdown")) {
++    if ((horizontal and std.ascii.eqlIgnoreCase(keyboard.key, "arrowright")) or
++        (!horizontal and std.ascii.eqlIgnoreCase(keyboard.key, "arrowdown")))
++    {
+         return line_step;
+     }
+-    if (std.ascii.eqlIgnoreCase(keyboard.key, "pageup")) return -page_step;
+-    if (std.ascii.eqlIgnoreCase(keyboard.key, "pagedown")) return page_step;
++    if (!horizontal and std.ascii.eqlIgnoreCase(keyboard.key, "pageup")) return -page_step;
++    if (!horizontal and std.ascii.eqlIgnoreCase(keyboard.key, "pagedown")) return page_step;
+     return null;
+ }
+ 
+diff --git a/src/primitives/canvas/root.zig b/src/primitives/canvas/root.zig
+index 953dc99..8561125 100644
+--- a/src/primitives/canvas/root.zig
++++ b/src/primitives/canvas/root.zig
+@@ -387,6 +387,7 @@ pub const WidgetAnchorAlignment = widget_model.WidgetAnchorAlignment;
+ pub const WidgetStyle = widget_model.WidgetStyle;
+ pub const WidgetVariant = widget_model.WidgetVariant;
+ pub const WidgetOverscroll = widget_model.WidgetOverscroll;
++pub const WidgetScrollAxis = widget_model.WidgetScrollAxis;
+ pub const WidgetIconPlacement = widget_model.WidgetIconPlacement;
+ pub const WidgetSize = widget_model.WidgetSize;
+ pub const WidgetRole = widget_model.WidgetRole;
+diff --git a/src/primitives/canvas/ui.zig b/src/primitives/canvas/ui.zig
+index 0c5bc7e..8cd525e 100644
+--- a/src/primitives/canvas/ui.zig
++++ b/src/primitives/canvas/ui.zig
+@@ -572,6 +572,10 @@ pub fn Ui(comptime Msg: type) type {
+             /// both honor it); `.none` pins it regardless of the token.
+             /// Meaningless on non-scroll elements.
+             overscroll: canvas.WidgetOverscroll = .default,
++            /// Physical axis for scroll containers. Vertical is the
++            /// document/list default; horizontal scrolls wide timelines.
++            /// Meaningless on non-scroll elements.
++            scroll_axis: canvas.WidgetScrollAxis = .vertical,
+             /// Layout-tween duration in milliseconds for `split`
+             /// (markup `resize-duration`): nonzero makes the split's
+             /// declared `value` a TARGET — a rebuild that moves it no
+@@ -2684,6 +2688,7 @@ pub fn Ui(comptime Msg: type) type {
+                 .semantics = options.semantics,
+                 .window_drag = options.window_drag,
+                 .overscroll = options.overscroll,
++                .scroll_axis = options.scroll_axis,
+                 .resize_duration_ms = options.resize_duration,
+                 .resize_easing = options.resize_easing,
+                 .resize_origin = options.resize_origin,
+diff --git a/src/primitives/canvas/ui_markup.zig b/src/primitives/canvas/ui_markup.zig
+index 2ecdfe3..d507431 100644
+--- a/src/primitives/canvas/ui_markup.zig
++++ b/src/primitives/canvas/ui_markup.zig
+@@ -1212,6 +1212,7 @@ pub const text_size_element_message = "heading and display are typography rungs
+ pub const grid_columns_element_message = "columns is only supported on grid - it fixes the grid's column count (omit it for the derived near-square grid)";
+ 
+ pub const overscroll_element_message = "overscroll is only supported on scroll - it names a scroll region's edge behavior (none pins at the content edges, rubber_band lets the region bounce past them, default follows the ScrollPhysics.overscroll token); anywhere else it would be silently inert";
++pub const scroll_axis_element_message = "axis is only supported on scroll - it selects whether the region moves vertical or horizontal content; anywhere else it would be silently inert";
+ 
+ pub const quiet_hover_element_message = "quiet-hover is only supported on pressable elements (hit targets like list-item, button, panel) - it opts an image-forward content tile out of the HOVER wash while press feedback, the focus ring, cursor intent, and hit testing keep their own channels; on a non-interactive element it would be silently inert";
+ 
+@@ -1222,6 +1223,8 @@ pub const quiet_hover_element_message = "quiet-hover is only supported on pressa
+ pub const overscroll_value_names = [_][]const u8{ "default", "none", "rubber_band" };
+ 
+ pub const overscroll_value_message = "unknown overscroll value - scroll takes default (follow the ScrollPhysics.overscroll token, off unless a theme flips it), none (pin at the content edges), or rubber_band (bounce past them)";
++pub const scroll_axis_value_names = [_][]const u8{ "vertical", "horizontal" };
++pub const scroll_axis_value_message = "unknown scroll axis - scroll takes vertical or horizontal";
+ 
+ pub const resize_duration_element_message = "resize-duration is only supported on split - it declares the split's layout tween (milliseconds; 0 snaps, the default): a rebuild that moves the bound value eases the rendered fraction there instead of snapping; anywhere else it would be silently inert";
+ 
+@@ -3143,6 +3146,16 @@ fn validateNode(document: MarkupDocument, node: MarkupNode, parent_element: ?[]c
+                         }
+                     }
+                 }
++                if (std.mem.eql(u8, attribute.name, "axis")) {
++                    if (!std.mem.eql(u8, node.name, "scroll")) {
++                        return attrError(node, attribute, scroll_axis_element_message);
++                    }
++                    if (parseAttrExpression(attribute.value)) |expression| {
++                        if (expression == .literal and !nameInList(expression.literal, &scroll_axis_value_names)) {
++                            return attrError(node, attribute, scroll_axis_value_message);
++                        }
++                    }
++                }
+                 if (std.mem.eql(u8, attribute.name, "quiet-hover")) {
+                     // The hover wash exists only on hit-tested elements:
+                     // anywhere else the knob is silently inert (same
+diff --git a/src/primitives/canvas/ui_schema.zig b/src/primitives/canvas/ui_schema.zig
+index 95a1338..c587dfb 100644
+--- a/src/primitives/canvas/ui_schema.zig
++++ b/src/primitives/canvas/ui_schema.zig
+@@ -450,6 +450,9 @@ pub const attrs = [_]AttrInfo{
+     // silently inert). No `field`: the engines apply it to
+     // `ElementOptions.style`, not a flat option field.
+     .{ .code = 79, .name = "quiet-hover", .class = .flag, .group = .option },
++    // Scroll direction (scroll only; the validator scopes it). The scalar
++    // value/offset channel is interpreted along this physical axis.
++    .{ .code = 80, .name = "axis", .class = .option, .group = .option, .field = "scroll_axis" },
+ };
+ 
+ // ----------------------------------------------------------------- events
+@@ -500,16 +503,16 @@ pub const control_size_value_names = [_][]const u8{ "default", "sm", "lg", "icon
+ pub const text_size_value_names = [_][]const u8{ "heading", "display" };
+ 
+ pub const icon_names = [_][]const u8{
+-    "alert",       "archive",       "arrow-down",   "arrow-right",      "arrow-up",
+-    "check",       "check-circle",  "chevron-down", "chevron-left",     "chevron-right",
+-    "chevron-up",  "circle-dot",    "clock",        "copy",             "download",
+-    "edit",        "ellipsis",      "external-link", "eye",             "file-text",
+-    "folder",      "folder-open",   "git-branch",    "git-merge",       "git-pull-request",
+-    "info",        "menu",          "moon",          "music",           "panel-left",
+-    "panel-right", "pause",         "play",          "plus",            "refresh-cw",
+-    "repeat",      "save",          "search",        "send",            "settings",
+-    "shuffle",     "skip-back",     "skip-forward",  "sun",             "terminal",
+-    "trash",       "volume",        "wrench",        "x",               "x-circle",
++    "alert",       "archive",      "arrow-down",    "arrow-right",  "arrow-up",
++    "check",       "check-circle", "chevron-down",  "chevron-left", "chevron-right",
++    "chevron-up",  "circle-dot",   "clock",         "copy",         "download",
++    "edit",        "ellipsis",     "external-link", "eye",          "file-text",
++    "folder",      "folder-open",  "git-branch",    "git-merge",    "git-pull-request",
++    "info",        "menu",         "moon",          "music",        "panel-left",
++    "panel-right", "pause",        "play",          "plus",         "refresh-cw",
++    "repeat",      "save",         "search",        "send",         "settings",
++    "shuffle",     "skip-back",    "skip-forward",  "sun",          "terminal",
++    "trash",       "volume",       "wrench",        "x",            "x-circle",
+ };
+ 
+ /// The semantic role vocabulary the `role` attribute accepts: the field
+diff --git a/src/primitives/canvas/widget_layout.zig b/src/primitives/canvas/widget_layout.zig
+index f5ff106..3af0501 100644
+--- a/src/primitives/canvas/widget_layout.zig
++++ b/src/primitives/canvas/widget_layout.zig
+@@ -103,7 +103,7 @@ pub fn layoutWidgetDepth(
+         .scroll_view => if (widget.layout.virtualized)
+             try layoutVirtualVerticalChildren(widget.children, content, index, depth, output, len, widget.value, widget.layout, tokens)
+         else
+-            try layoutScrollChildren(widget.children, content, index, depth, output, len, widget.value, tokens),
++            try layoutScrollChildren(widget.children, content, index, depth, output, len, widget.value, widget.scroll_axis, tokens),
+         .list => if (widget.layout.virtualized)
+             try layoutVirtualVerticalChildren(widget.children, content, index, depth, output, len, widget.value, widget.layout, tokens)
+         else
+@@ -1010,10 +1010,15 @@ fn layoutScrollChildren(
+     depth: usize,
+     output: []WidgetLayoutNode,
+     len: *usize,
+-    scroll_y: f32,
++    scroll_offset: f32,
++    axis: canvas.WidgetScrollAxis,
+     tokens: DesignTokens,
+ ) Error!void {
+-    const scrolled_content = content.translate(geometry.OffsetF.init(0, -scroll_y));
++    const translation = switch (axis) {
++        .vertical => geometry.OffsetF.init(0, -scroll_offset),
++        .horizontal => geometry.OffsetF.init(-scroll_offset, 0),
++    };
++    const scrolled_content = content.translate(translation);
+     for (children) |child| {
+         if (child.layout.anchor != null) continue;
+         _ = try layoutWidgetDepth(child, stackChildFrame(scrolled_content, child), parent_index, depth + 1, output, len, tokens);
+diff --git a/src/primitives/canvas/widget_render.zig b/src/primitives/canvas/widget_render.zig
+index 30b0e17..3dc3db4 100644
+--- a/src/primitives/canvas/widget_render.zig
++++ b/src/primitives/canvas/widget_render.zig
+@@ -529,7 +529,7 @@ fn emitWidgetLayoutNodeContent(
+             try builder.popClip();
+             // Native scroll drivers own the (OS overlay) scrollbar.
+             if (!paint_widget.native_scroll) {
+-                try widget_render_scroll.emitScrollViewScrollbar(builder, paint_widget.frame, widgetScrollSemantics(layout, node_index).metrics, tokens, paint_widget.id);
++                try widget_render_scroll.emitScrollViewScrollbar(builder, paint_widget.frame, widgetScrollSemantics(layout, node_index).metrics, tokens, paint_widget.id, paint_widget.scroll_axis);
+             }
+             return;
+         },
+@@ -649,7 +649,7 @@ fn emitWidgetLayoutScrollableChildren(
+     try builder.popClip();
+     // Native scroll drivers own the (OS overlay) scrollbar.
+     if (!widget.native_scroll) {
+-        try widget_render_scroll.emitScrollViewScrollbar(builder, widget.frame, widgetScrollSemantics(layout, parent_index).metrics, tokens, widget.id);
++        try widget_render_scroll.emitScrollViewScrollbar(builder, widget.frame, widgetScrollSemantics(layout, parent_index).metrics, tokens, widget.id, widget.scroll_axis);
+     }
+ }
+ 
+@@ -882,7 +882,7 @@ fn emitScrollViewWidget(builder: *Builder, widget: Widget, tokens: DesignTokens,
+     try builder.popClip();
+     // Native scroll drivers own the (OS overlay) scrollbar.
+     if (!widget.native_scroll) {
+-        try widget_render_scroll.emitScrollViewScrollbar(builder, widget.frame, widget_render_scroll.widgetScrollMetricsForWidget(widget, tokens), tokens, widget.id);
++        try widget_render_scroll.emitScrollViewScrollbar(builder, widget.frame, widget_render_scroll.widgetScrollMetricsForWidget(widget, tokens), tokens, widget.id, widget.scroll_axis);
+     }
+ }
+ 
+diff --git a/src/primitives/canvas/widget_render_scroll.zig b/src/primitives/canvas/widget_render_scroll.zig
+index 9c6f461..41cffd3 100644
+--- a/src/primitives/canvas/widget_render_scroll.zig
++++ b/src/primitives/canvas/widget_render_scroll.zig
+@@ -15,6 +15,7 @@ const Builder = canvas.Builder;
+ const Radius = drawing_model.Radius;
+ const DesignTokens = token_model.DesignTokens;
+ const Widget = widget_model.Widget;
++const WidgetScrollAxis = widget_model.WidgetScrollAxis;
+ const WidgetScrollMetrics = event_model.WidgetScrollMetrics;
+ 
+ const colorFill = widget_render_style.colorFill;
+@@ -26,12 +27,13 @@ pub const ScrollbarGeometry = struct {
+     thumb: geometry.RectF,
+ };
+ 
+-pub fn emitScrollViewScrollbar(builder: *Builder, frame: geometry.RectF, metrics: WidgetScrollMetrics, tokens: DesignTokens, id: ObjectId) Error!void {
+-    const scrollbar = scrollViewScrollbarGeometry(frame, metrics, tokens) orelse return;
++pub fn emitScrollViewScrollbar(builder: *Builder, frame: geometry.RectF, metrics: WidgetScrollMetrics, tokens: DesignTokens, id: ObjectId, axis: WidgetScrollAxis) Error!void {
++    const scrollbar = scrollViewScrollbarGeometry(frame, metrics, tokens, axis) orelse return;
+     const track = pixelSnapGeometryRect(tokens, scrollbar.track);
+     const thumb = pixelSnapGeometryRect(tokens, scrollbar.thumb);
+     const visual = tokens.controls.scrollbar;
+-    const radius = Radius.all(if (visual.radius) |value| nonNegative(value) else track.width * 0.5);
++    const thickness = if (axis == .horizontal) track.height else track.width;
++    const radius = Radius.all(if (visual.radius) |value| nonNegative(value) else thickness * 0.5);
+     const track_fill = visual.background orelse colorWithAlpha(tokens.colors.border, @min(tokens.colors.border.a, 0.22));
+     const thumb_fill = visual.foreground orelse visual.active_background orelse colorWithAlpha(tokens.colors.text_muted, 0.55);
+     try builder.fillRoundedRect(.{
+@@ -48,7 +50,7 @@ pub fn emitScrollViewScrollbar(builder: *Builder, frame: geometry.RectF, metrics
+     });
+ }
+ 
+-pub fn scrollViewScrollbarGeometry(frame: geometry.RectF, metrics: WidgetScrollMetrics, tokens: DesignTokens) ?ScrollbarGeometry {
++pub fn scrollViewScrollbarGeometry(frame: geometry.RectF, metrics: WidgetScrollMetrics, tokens: DesignTokens, axis: WidgetScrollAxis) ?ScrollbarGeometry {
+     if (!metrics.present) return null;
+     const viewport = nonNegative(metrics.viewport_extent);
+     const content = nonNegative(metrics.content_extent);
+@@ -56,7 +58,22 @@ pub fn scrollViewScrollbarGeometry(frame: geometry.RectF, metrics: WidgetScrollM
+     if (frame.isEmpty() or viewport <= 0 or content <= viewport or max_offset <= 0) return null;
+ 
+     const inset = densityValue(tokens, 3);
+-    const thickness = @min(@max(densityValue(tokens, 3), frame.width * 0.0125), densityValue(tokens, 6));
++    const cross_extent = if (axis == .horizontal) frame.height else frame.width;
++    const thickness = @min(@max(densityValue(tokens, 3), cross_extent * 0.0125), densityValue(tokens, 6));
++    if (axis == .horizontal) {
++        const track_width = @max(0, frame.width - inset * 2);
++        if (track_width <= 0 or thickness <= 0) return null;
++        const track = geometry.RectF.init(frame.x + inset, frame.y + frame.height - inset - thickness, track_width, thickness);
++        const thumb_ratio = std.math.clamp(viewport / content, 0, 1);
++        const min_thumb = @min(track_width, densityValue(tokens, 18));
++        const thumb_width = @min(track_width, @max(min_thumb, track_width * thumb_ratio));
++        const travel = @max(0, track_width - thumb_width);
++        const offset_ratio = std.math.clamp(nonNegative(metrics.offset) / max_offset, 0, 1);
++        return .{
++            .track = track,
++            .thumb = geometry.RectF.init(track.x + travel * offset_ratio, track.y, thumb_width, track.height),
++        };
++    }
+     const track_height = @max(0, frame.height - inset * 2);
+     if (track_height <= 0 or thickness <= 0) return null;
+ 
+@@ -84,11 +101,12 @@ pub fn widgetScrollMetricsForWidget(widget: Widget, tokens: DesignTokens) Widget
+     if (viewport.isEmpty()) return .{};
+ 
+     const content_extent = widgetScrollContentExtentForWidget(widget, viewport, tokens);
+-    const max_offset = @max(0, content_extent - viewport.height);
++    const viewport_extent = if (widget.scroll_axis == .horizontal) viewport.width else viewport.height;
++    const max_offset = @max(0, content_extent - viewport_extent);
+     return .{
+         .present = true,
+         .offset = std.math.clamp(nonNegative(widget.value), 0, max_offset),
+-        .viewport_extent = viewport.height,
++        .viewport_extent = viewport_extent,
+         .content_extent = content_extent,
+     };
+ }
+@@ -99,6 +117,13 @@ fn widgetScrollContentExtentForWidget(widget: Widget, viewport: geometry.RectF,
+     }
+ 
+     const offset = widget.value;
++    if (widget.scroll_axis == .horizontal) {
++        var right = viewport.maxX();
++        for (widget.children) |child| {
++            right = @max(right, child.frame.maxX() + offset);
++        }
++        return @max(0, right - viewport.x);
++    }
+     var bottom = viewport.maxY();
+     for (widget.children) |child| {
+         bottom = @max(bottom, child.frame.maxY() + offset);
+diff --git a/src/primitives/canvas/widget_semantics.zig b/src/primitives/canvas/widget_semantics.zig
+index 9efe664..327846b 100644
+--- a/src/primitives/canvas/widget_semantics.zig
++++ b/src/primitives/canvas/widget_semantics.zig
+@@ -422,13 +422,14 @@ pub fn widgetScrollSemantics(layout: anytype, node_index: usize, virtual_content
+     if (viewport.isEmpty()) return .{};
+ 
+     const content_extent = widgetScrollContentExtent(layout, node_index, viewport, virtual_content_extent_fn);
+-    const max_offset = @max(0, content_extent - viewport.height);
++    const viewport_extent = if (node.widget.scroll_axis == .horizontal) viewport.width else viewport.height;
++    const max_offset = @max(0, content_extent - viewport_extent);
+     const offset = std.math.clamp(nonNegative(node.widget.value), 0, max_offset);
+     return .{
+         .metrics = .{
+             .present = true,
+             .offset = offset,
+-            .viewport_extent = viewport.height,
++            .viewport_extent = viewport_extent,
+             .content_extent = content_extent,
+         },
+         .value = if (max_offset > 0) offset / max_offset else 0,
+@@ -452,6 +453,14 @@ fn widgetScrollContentExtent(layout: anytype, scroll_index: usize, viewport: geo
+ 
+     const scroll_depth = scroll_node.depth;
+     const offset = scroll_node.widget.value;
++    if (scroll_node.widget.scroll_axis == .horizontal) {
++        var right = viewport.maxX();
++        var horizontal_index = scroll_index + 1;
++        while (horizontal_index < layout.nodes.len and layout.nodes[horizontal_index].depth > scroll_depth) : (horizontal_index += 1) {
++            right = @max(right, layout.nodes[horizontal_index].frame.maxX() + offset);
++        }
++        return @max(0, right - viewport.x);
++    }
+     var bottom = viewport.maxY();
+     var index = scroll_index + 1;
+     while (index < layout.nodes.len and layout.nodes[index].depth > scroll_depth) {
+diff --git a/src/primitives/canvas/widgets.zig b/src/primitives/canvas/widgets.zig
+index 44a0b7b..8d9560f 100644
+--- a/src/primitives/canvas/widgets.zig
++++ b/src/primitives/canvas/widgets.zig
+@@ -702,6 +702,15 @@ pub const WidgetOverscroll = enum {
+     rubber_band,
+ };
+ 
++/// The physical axis owned by a scroll container. Vertical preserves the
++/// original list/document contract; horizontal is intended for timelines,
++/// paged canvases, and other wide content. The offset remains a scalar in
++/// both cases and is interpreted along this axis.
++pub const WidgetScrollAxis = enum {
++    vertical,
++    horizontal,
++};
++
+ /// Where a control sits inside a FLUSH button group (`button_group`
+ /// with gap 0), stamped onto the render-time widget copy by BOTH render
+ /// walks — never authored, never serialized, never retained. The stamp
+@@ -807,6 +816,9 @@ pub const Widget = struct {
+     /// `.scroll_view`: the engine's drawn scrollbar and kinetic physics
+     /// stand down — the OS scroller owns feel and the overlay scroller.
+     native_scroll: bool = false,
++    /// Physical axis for `.scroll_view` layout, input, semantics, and the
++    /// native scroll driver. Meaningless on non-scroll widgets.
++    scroll_axis: WidgetScrollAxis = .vertical,
+     /// Per-region edge behavior for scroll containers (`overscroll:` in
+     /// the builder, `overscroll=` in markup): `.default` follows the
+     /// `ScrollPhysics.overscroll` token (off unless a theme flips it),
+diff --git a/src/runtime/canvas_widget_events.zig b/src/runtime/canvas_widget_events.zig
+index f4f26e7..86e4704 100644
+--- a/src/runtime/canvas_widget_events.zig
++++ b/src/runtime/canvas_widget_events.zig
+@@ -536,7 +536,7 @@ pub fn RuntimeCanvasWidgetEvents(comptime Runtime: type) type {
+             const index = runtimeFindViewIndex(self, pointer_event.window_id, pointer_event.view_label) orelse return;
+             if (self.views[index].kind != .gpu_surface) return;
+ 
+-            const dirty = try self.views[index].applyCanvasWidgetScrollRoute(pointer_event.route, pointer_event.pointer.delta.dy, .wheel) orelse return;
++            const dirty = try self.views[index].applyCanvasWidgetScrollRoute(pointer_event.route, pointer_event.pointer.delta, .wheel) orelse return;
+             const previous_cursor = self.views[index].canvas_widget_cursor;
+             self.views[index].reconcileCanvasWidgetRenderStateAfterScroll(pointer_event.pointer.point);
+             if (previous_cursor != self.views[index].canvas_widget_cursor) try syncCanvasWidgetCursorForView(self, index);
+diff --git a/src/runtime/canvas_widget_scroll_drivers.zig b/src/runtime/canvas_widget_scroll_drivers.zig
+index 318da42..d6a2e8a 100644
+--- a/src/runtime/canvas_widget_scroll_drivers.zig
++++ b/src/runtime/canvas_widget_scroll_drivers.zig
+@@ -81,7 +81,9 @@ pub fn RuntimeCanvasWidgetScrollDrivers(comptime Runtime: type) type {
+                 // full region frame so the native max offset
+                 // (content_height - frame.height) matches the engine's
+                 // (content_extent - viewport.height).
+-                const content_height = frame.height + @max(0, content_extent - viewport.height);
++                const horizontal = node.widget.scroll_axis == .horizontal;
++                const viewport_extent = if (horizontal) viewport.width else viewport.height;
++                const content_axis_extent = (if (horizontal) frame.width else frame.height) + @max(0, content_extent - viewport_extent);
+                 const offset = node.widget.value;
+                 const tracked = trackedScrollDriverOffset(view, node.widget.id);
+                 const push = tracked == null or @abs(tracked.? - offset) > scroll_driver_offset_epsilon;
+@@ -89,7 +91,11 @@ pub fn RuntimeCanvasWidgetScrollDrivers(comptime Runtime: type) type {
+                 drivers[count] = .{
+                     .id = node.widget.id,
+                     .frame = frame,
+-                    .content_size = .{ .width = frame.width, .height = content_height },
++                    .content_size = if (horizontal)
++                        .{ .width = content_axis_extent, .height = frame.height }
++                    else
++                        .{ .width = frame.width, .height = content_axis_extent },
++                    .axis = if (horizontal) .horizontal else .vertical,
+                     .offset_y = offset,
+                     .set_offset = push,
+                     // Per-region edge behavior, resolved the same way the
+diff --git a/src/runtime/view_widget_scroll.zig b/src/runtime/view_widget_scroll.zig
+index 5ad1e1f..3fcf67b 100644
+--- a/src/runtime/view_widget_scroll.zig
++++ b/src/runtime/view_widget_scroll.zig
+@@ -23,6 +23,12 @@ fn canvasWidgetModelDrivenVirtual(widget: canvas.Widget) bool {
+     return widget.layout.virtualized and !canvas.widgetVirtualRuntimeScrolled(widget);
+ }
+ 
++fn canvasWidgetMatchesScrollAxis(widget: canvas.Widget, axis: canvas.WidgetScrollAxis) bool {
++    if (widget.kind == .textarea) return axis == .vertical;
++    if (widget.kind == .scroll_view) return widget.scroll_axis == axis;
++    return axis == .vertical;
++}
++
+ pub fn RuntimeViewCanvasWidgetScroll(comptime RuntimeView: type) type {
+     return struct {
+         pub fn canvasWidgetKineticScrollActive(self: *const RuntimeView) bool {
+@@ -38,27 +44,32 @@ pub fn RuntimeViewCanvasWidgetScroll(comptime RuntimeView: type) type {
+             return false;
+         }
+ 
+-        pub fn applyCanvasWidgetScrollRoute(self: *RuntimeView, route: []const canvas.WidgetEventRouteEntry, delta_y: f32, source: CanvasWidgetScrollSource) anyerror!?geometry.RectF {
++        pub fn applyCanvasWidgetScrollRoute(self: *RuntimeView, route: []const canvas.WidgetEventRouteEntry, delta: geometry.OffsetF, source: CanvasWidgetScrollSource) anyerror!?geometry.RectF {
++            const axis: canvas.WidgetScrollAxis = if (@abs(delta.dx) > @abs(delta.dy)) .horizontal else .vertical;
++            const axis_delta = if (axis == .horizontal) delta.dx else delta.dy;
++            if (axis_delta == 0) return null;
+             var depth_limit: ?usize = null;
+-            while (self.deepestCanvasWidgetScrollIndex(route, depth_limit)) |scroll_index| {
++            while (self.deepestCanvasWidgetScrollIndex(route, depth_limit, axis)) |scroll_index| {
+                 if (canvasWidgetModelDrivenVirtual(self.widget_layout_nodes[scroll_index].widget)) return null;
+-                const has_scroll_parent = self.deepestCanvasWidgetScrollIndex(route, self.widget_layout_nodes[scroll_index].depth) != null;
+-                if (has_scroll_parent and !self.canvasWidgetScrollCanConsume(scroll_index, delta_y)) {
++                const has_scroll_parent = self.deepestCanvasWidgetScrollIndex(route, self.widget_layout_nodes[scroll_index].depth, axis) != null;
++                if (has_scroll_parent and !self.canvasWidgetScrollCanConsume(scroll_index, axis_delta)) {
+                     depth_limit = self.widget_layout_nodes[scroll_index].depth;
+                     continue;
+                 }
+-                if (try self.applyCanvasWidgetScroll(scroll_index, delta_y, source, !has_scroll_parent)) |dirty| return dirty;
++                if (try self.applyCanvasWidgetScroll(scroll_index, axis_delta, source, !has_scroll_parent)) |dirty| return dirty;
+                 depth_limit = self.widget_layout_nodes[scroll_index].depth;
+             }
+             return null;
+         }
+ 
+-        pub fn deepestCanvasWidgetScrollIndex(self: *const RuntimeView, route: []const canvas.WidgetEventRouteEntry, depth_limit: ?usize) ?usize {
++        pub fn deepestCanvasWidgetScrollIndex(self: *const RuntimeView, route: []const canvas.WidgetEventRouteEntry, depth_limit: ?usize, axis: canvas.WidgetScrollAxis) ?usize {
+             var result: ?usize = null;
+             var result_depth: usize = 0;
+             for (route) |entry| {
+                 if (!canvasWidgetScrollableKind(entry.kind) or entry.node_index >= self.widget_layout_node_count) continue;
+-                const depth = self.widget_layout_nodes[entry.node_index].depth;
++                const node = self.widget_layout_nodes[entry.node_index];
++                if (!canvasWidgetMatchesScrollAxis(node.widget, axis)) continue;
++                const depth = node.depth;
+                 if (depth_limit) |limit| {
+                     if (depth >= limit) continue;
+                 }
+@@ -102,10 +113,11 @@ pub fn RuntimeViewCanvasWidgetScroll(comptime RuntimeView: type) type {
+ 
+         pub fn canvasWidgetScrollState(self: *const RuntimeView, scroll_index: usize, scroll_node: canvas.WidgetLayoutNode, viewport: geometry.RectF) canvas.ScrollState {
+             const retained = self.widget_scroll_states[scroll_index];
++            const viewport_extent = if (scroll_node.widget.scroll_axis == .horizontal) viewport.width else viewport.height;
+             return .{
+                 .offset = scroll_node.widget.value,
+                 .velocity = retained.velocity,
+-                .viewport_extent = viewport.height,
++                .viewport_extent = viewport_extent,
+                 .content_extent = self.canvasWidgetScrollContentExtent(scroll_index, viewport),
+             };
+         }
+@@ -316,8 +328,17 @@ pub fn RuntimeViewCanvasWidgetScroll(comptime RuntimeView: type) type {
+             if (scroll_index < self.widget_layout_node_count and self.widget_layout_nodes[scroll_index].widget.layout.virtualized) {
+                 return @max(viewport.height, canvas.virtualWidgetScrollContentExtentWithTokens(self.widget_layout_nodes[scroll_index].widget, viewport.height, self.widget_tokens));
+             }
+-            const scroll_depth = self.widget_layout_nodes[scroll_index].depth;
+-            const offset = self.widget_layout_nodes[scroll_index].widget.value;
++            const scroll_node = self.widget_layout_nodes[scroll_index];
++            const scroll_depth = scroll_node.depth;
++            const offset = scroll_node.widget.value;
++            if (scroll_node.widget.scroll_axis == .horizontal) {
++                var right = viewport.maxX();
++                var horizontal_index = scroll_index + 1;
++                while (horizontal_index < self.widget_layout_node_count and self.widget_layout_nodes[horizontal_index].depth > scroll_depth) : (horizontal_index += 1) {
++                    right = @max(right, self.widget_layout_nodes[horizontal_index].frame.maxX() + offset);
++                }
++                return @max(0, right - viewport.x);
++            }
+             var bottom = viewport.maxY();
+             var index = scroll_index + 1;
+             while (index < self.widget_layout_node_count and self.widget_layout_nodes[index].depth > scroll_depth) : (index += 1) {
+@@ -326,11 +347,16 @@ pub fn RuntimeViewCanvasWidgetScroll(comptime RuntimeView: type) type {
+             return @max(0, bottom - viewport.y);
+         }
+ 
+-        pub fn translateCanvasWidgetScrollDescendants(self: *RuntimeView, scroll_index: usize, dy: f32) void {
++        pub fn translateCanvasWidgetScrollDescendants(self: *RuntimeView, scroll_index: usize, delta: f32) void {
+             const scroll_depth = self.widget_layout_nodes[scroll_index].depth;
++            const axis = self.widget_layout_nodes[scroll_index].widget.scroll_axis;
++            const translation = if (axis == .horizontal)
++                geometry.OffsetF.init(delta, 0)
++            else
++                geometry.OffsetF.init(0, delta);
+             var index = scroll_index + 1;
+             while (index < self.widget_layout_node_count and self.widget_layout_nodes[index].depth > scroll_depth) : (index += 1) {
+-                const translated = self.widget_layout_nodes[index].frame.translate(.{ .dx = 0, .dy = dy });
++                const translated = self.widget_layout_nodes[index].frame.translate(translation);
+                 self.widget_layout_nodes[index].frame = translated;
+                 self.widget_layout_nodes[index].widget.frame = translated;
+             }

@@ -16,10 +16,15 @@
       system:
       let
         pkgs = import nixpkgs { inherit system; };
+        nativeSdk = pkgs.applyPatches {
+          name = "native-sdk-0.5.1-zeit";
+          src = inputs.native-sdk;
+          patches = [ ./nix/patches/native-horizontal-scroll.patch ];
+        };
         nativeCli = pkgs.stdenv.mkDerivation {
           pname = "native-sdk-cli";
           version = "0.5.1";
-          src = inputs.native-sdk;
+          src = nativeSdk;
           nativeBuildInputs = [ pkgs.zig ];
           dontConfigure = true;
 
@@ -52,8 +57,8 @@
 
           shellHook = ''
             export ZEIT_DEV_SHELL=1
-            export NATIVE_SDK_PATH="${inputs.native-sdk}"
-            export NATIVE_SDK_SKILLS_ROOT="${inputs.native-sdk}"
+            export NATIVE_SDK_PATH="${nativeSdk}"
+            export NATIVE_SDK_SKILLS_ROOT="${nativeSdk}"
           '';
         };
       }
