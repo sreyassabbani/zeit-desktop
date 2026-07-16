@@ -1,0 +1,37 @@
+.{
+    .id = "app.zeit.desktop",
+    .name = "zeit-desktop",
+    .display_name = "Zeit",
+    .description = "A fast personal calendar that helps allocate attention.",
+    .version = "0.1.0",
+    .platforms = .{"macos"},
+    .permissions = .{ "view", "command" },
+    .capabilities = .{ "native_views", "gpu_surfaces" },
+    .theme = "geist",
+    .theme_accent = "#5f63d8",
+    .shell = .{
+        .windows = .{
+            .{
+                .label = "main",
+                .title = "Zeit",
+                .width = 1380,
+                .height = 860,
+                .min_width = 1040,
+                .min_height = 640,
+                .restore_state = true,
+                .restore_policy = "center_on_primary",
+                .titlebar = "hidden_inset_tall",
+                .views = .{
+                    .{ .label = "zeit-canvas", .kind = "gpu_surface", .fill = true, .role = "Calendar canvas", .accessibility_label = "Zeit calendar", .gpu_backend = "metal", .gpu_pixel_format = "bgra8_unorm", .gpu_present_mode = "timer", .gpu_alpha_mode = "opaque", .gpu_color_space = "srgb", .gpu_vsync = true },
+                },
+            },
+        },
+    },
+    .security = .{
+        .navigation = .{
+            .allowed_origins = .{ "zero://app", "zero://inline" },
+            .external_links = .{ .action = "deny" },
+        },
+    },
+    .web_engine = "system",
+}

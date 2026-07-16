@@ -1,0 +1,205 @@
+<!-- Native-rendered calendar surface over the ahead-of-time compiled TS core. -->
+<template name="event-column" args="day events">
+  <column grow="1" padding="4" label="{day}">
+    <for each="events" as="e" key="eventId">
+      <spacer height="{e.gapBefore}" />
+      <if test="{e.tone == 'accent'}">
+        <list-item height="{e.height}" padding="7" gap="2" background="accent" selected="true" quiet-hover="true" on-press="select_event:{e.eventId}" label="{e.title}">
+          <column gap="2" grow="1">
+            <text foreground="accent_text"><span weight="bold">{e.title}</span></text>
+            <text size="sm" foreground="accent_text" wrap="false">{e.timeLabel}</text>
+            <if test="{e.height > 80}">
+              <text size="sm" foreground="accent_text" wrap="false">{e.location}</text>
+            </if>
+          </column>
+        </list-item>
+      </if>
+      <else>
+        <if test="{e.tone == 'muted'}">
+          <panel height="{e.height}" padding="7" background="surface" border-color="border" radius="sm" on-press="select_event:{e.eventId}" role="listitem" label="{e.title}">
+            <column gap="2" grow="1">
+              <text><span weight="bold">{e.title}</span></text>
+              <text size="sm" foreground="text_muted" wrap="false">{e.timeLabel}</text>
+              <if test="{e.height > 80}">
+                <text size="sm" foreground="text_muted" wrap="false">{e.location}</text>
+              </if>
+            </column>
+          </panel>
+        </if>
+        <else>
+          <panel height="{e.height}" padding="7" background="surface" border-color="border" radius="sm" on-press="select_event:{e.eventId}" role="listitem" label="{e.title}">
+            <column gap="2" grow="1">
+              <text><span weight="bold">{e.title}</span></text>
+              <text size="sm" foreground="text_muted" wrap="false">{e.timeLabel}</text>
+              <if test="{e.height > 80}">
+                <text size="sm" foreground="text_muted" wrap="false">{e.location}</text>
+              </if>
+            </column>
+          </panel>
+        </else>
+      </else>
+    </for>
+  </column>
+</template>
+
+<column background="background">
+  <row height="{headerHeight}" padding="10" gap="8" cross="center" background="surface" window-drag="true" label="Calendar toolbar">
+    <spacer width="{chromeLeading}" />
+    <button size="sm" variant="ghost" icon="panel-left" on-press="toggle_sidebar" label="Toggle sidebar"></button>
+    <button size="sm" variant="outline" selected="{atToday}" on-press="go_today">Today</button>
+    <button-group>
+      <button size="sm" icon="chevron-left" disabled="{cannotGoPrevious}" on-press="go_previous" label="Previous period"></button>
+      <button size="sm" icon="chevron-right" disabled="{cannotGoNext}" on-press="go_next" label="Next period"></button>
+    </button-group>
+    <text grow="1" label="{periodLabel}"><span weight="bold" scale="1.15">{periodLabel}</span></text>
+    <button-group>
+      <button size="sm" selected="{view == 'week'}" on-press="show_week">Week</button>
+      <button size="sm" selected="{view == 'month'}" on-press="show_month">Month</button>
+    </button-group>
+    <spacer width="{chromeTrailing}" />
+  </row>
+  <separator />
+
+  <row grow="1">
+    <if test="{sidebarOpen}">
+      <column width="232" padding="12" gap="14" background="surface" label="Calendar sidebar">
+        <column gap="7">
+          <text size="sm" foreground="text_muted">CALENDARS</text>
+          <for each="calendars" as="c" key="id">
+            <switch checked="{c.visible}" on-toggle="toggle_calendar:{c.id}" label="{c.name}">{c.name}</switch>
+          </for>
+        </column>
+        <separator />
+        <column gap="7" grow="1">
+          <row cross="center" gap="6">
+            <text size="sm" foreground="text_muted" grow="1">WIDGET PREVIEW</text>
+            <badge variant="secondary">ranked</badge>
+          </row>
+          <text size="sm" foreground="text_muted" wrap="true">The same policy will drive the desktop widget and menu-bar surface.</text>
+          <list label="Prioritized events" role="list">
+            <for each="widgetEvents" as="w" key="id">
+              <list-item padding="7" gap="6" on-press="select_event:{w.id}" role="listitem" label="{w.title}">
+                <column gap="2" grow="1">
+                  <row gap="5" cross="center">
+                    <text wrap="false" grow="1">{w.title}</text>
+                    <if test="{w.pinned}">
+                      <badge variant="primary">Pinned</badge>
+                    </if>
+                  </row>
+                  <text size="sm" foreground="text_muted">{w.timeLabel}</text>
+                </column>
+              </list-item>
+            </for>
+          </list>
+        </column>
+      </column>
+      <separator />
+    </if>
+
+    <column grow="1">
+      <if test="{view == 'week'}">
+        <row height="54" background="surface">
+          <spacer width="58" />
+          <for each="weekDays" as="d" key="id">
+            <column grow="1" gap="2" main="center" cross="center" label="{d.name}">
+              <text size="sm" foreground="text_muted">{d.name}</text>
+              <if test="{d.today}">
+                <badge variant="primary">{d.day}</badge>
+              </if>
+              <else>
+                <text>{d.day}</text>
+              </else>
+            </column>
+          </for>
+        </row>
+        <separator />
+        <scroll grow="1" value="{timelineScrollTop}" on-scroll="timeline_scrolled" label="Week timeline">
+          <row height="1152">
+            <column width="58">
+              <for each="hourRows" as="h" key="id">
+                <row height="72" padding="6" main="end">
+                  <text size="sm" foreground="text_muted">{h.label}</text>
+                </row>
+              </for>
+            </column>
+            <stack grow="1">
+              <column grow="1">
+                <for each="hourRows" as="h" key="id">
+                  <column height="72" label="{h.label}">
+                    <separator />
+                    <spacer grow="1" />
+                  </column>
+                </for>
+              </column>
+              <row grow="1">
+                <use template="event-column" day="Monday" events="{mondayEvents}" />
+                <separator />
+                <use template="event-column" day="Tuesday" events="{tuesdayEvents}" />
+                <separator />
+                <use template="event-column" day="Wednesday" events="{wednesdayEvents}" />
+                <separator />
+                <use template="event-column" day="Thursday" events="{thursdayEvents}" />
+                <separator />
+                <use template="event-column" day="Friday" events="{fridayEvents}" />
+                <separator />
+                <use template="event-column" day="Saturday" events="{saturdayEvents}" />
+                <separator />
+                <use template="event-column" day="Sunday" events="{sundayEvents}" />
+              </row>
+            </stack>
+          </row>
+        </scroll>
+      </if>
+      <else>
+        <column grow="1">
+          <row height="38" background="surface">
+            <for each="weekdayLabels" as="d" key="id">
+              <column grow="1" main="center" cross="center">
+                <text size="sm" foreground="text_muted">{d.name}</text>
+              </column>
+            </for>
+          </row>
+          <separator />
+          <if test="{hasMonthData}">
+            <scroll grow="1" label="Month grid">
+              <grid columns="7" gap="1" background="border">
+                <for each="monthCells" as="cell" key="id">
+                  <if test="{cell.today}">
+                    <list-item height="122" padding="8" gap="6" background="surface" selected="true" quiet-hover="true" label="Today, July {cell.day}">
+                      <column gap="5" grow="1">
+                        <row>
+                          <badge variant="primary">{cell.day}</badge>
+                        </row>
+                        <if test="{cell.hasEvent1}"><badge variant="primary">{cell.event1}</badge></if>
+                        <if test="{cell.hasEvent2}"><badge variant="secondary">{cell.event2}</badge></if>
+                      </column>
+                    </list-item>
+                  </if>
+                  <else>
+                    <list-item height="122" padding="8" gap="6" background="surface" quiet-hover="true" label="Day {cell.day}">
+                      <column gap="5" grow="1">
+                        <if test="{cell.inMonth}"><text>{cell.day}</text></if>
+                        <else><text foreground="text_muted">{cell.day}</text></else>
+                        <if test="{cell.hasEvent1}"><badge variant="secondary">{cell.event1}</badge></if>
+                        <if test="{cell.hasEvent2}"><badge variant="secondary">{cell.event2}</badge></if>
+                      </column>
+                    </list-item>
+                  </else>
+                </for>
+              </grid>
+            </scroll>
+          </if>
+          <else>
+            <column grow="1" main="center" cross="center" gap="6">
+              <text><span weight="bold">No fixture data for this month</span></text>
+              <text size="sm" foreground="text_muted">The navigation state is real; provider-backed dates come next.</text>
+              <button size="sm" variant="outline" on-press="go_today">Return to July</button>
+            </column>
+          </else>
+        </column>
+      </else>
+    </column>
+  </row>
+  <separator />
+  <status-bar>Selected: {selectionTitle}</status-bar>
+</column>
