@@ -42,8 +42,8 @@
   </column>
 </template>
 
-<template name="week-header" args="label days">
-  <row width="{week_page_width}" height="46" background="surface" label="{label}">
+<template name="fortnight-header" args="label days">
+  <row width="{fortnight_page_width}" height="46" background="surface" label="{label}">
     <for each="days" as="d" key="id">
       <column grow="1" gap="2" main="center" cross="center" label="{d.name}">
         <text size="sm" foreground="text_muted">{d.name}</text>
@@ -58,8 +58,8 @@
   </row>
 </template>
 
-<template name="week-grid" args="label monday_events tuesday_events wednesday_events thursday_events friday_events saturday_events sunday_events">
-  <stack width="{week_page_width}" height="1152" label="{label}">
+<template name="fortnight-grid" args="label days">
+  <stack width="{fortnight_page_width}" height="1152" label="{label}">
     <column grow="1">
       <for each="hour_rows" as="h" key="id">
         <column height="72" label="{h.label}">
@@ -69,19 +69,10 @@
       </for>
     </column>
     <row grow="1">
-      <use template="event-column" day="Monday" events="{monday_events}" />
-      <separator />
-      <use template="event-column" day="Tuesday" events="{tuesday_events}" />
-      <separator />
-      <use template="event-column" day="Wednesday" events="{wednesday_events}" />
-      <separator />
-      <use template="event-column" day="Thursday" events="{thursday_events}" />
-      <separator />
-      <use template="event-column" day="Friday" events="{friday_events}" />
-      <separator />
-      <use template="event-column" day="Saturday" events="{saturday_events}" />
-      <separator />
-      <use template="event-column" day="Sunday" events="{sunday_events}" />
+      <for each="days" as="d" key="id">
+        <use template="event-column" day="{d.name}" events="{d.events}" />
+        <separator />
+      </for>
     </row>
   </stack>
 </template>
@@ -121,17 +112,22 @@
 </template>
 
 <column background="background">
-  <row height="{header_height}" padding="8" gap="6" cross="center" background="surface" window-drag="true" label="Calendar toolbar">
-    <spacer width="{chrome_leading}" />
-    <button size="sm" variant="ghost" icon="panel-left" on-press="toggle_sidebar" label="Toggle sidebar"></button>
-    <button size="sm" variant="outline" on-press="go_today">Today</button>
-    <text grow="1" label="{period_label}"><span weight="medium">{period_label}</span></text>
-    <button-group>
-      <button size="sm" selected="{view == 'week'}" on-press="show_week">Week</button>
-      <button size="sm" selected="{view == 'month'}" on-press="show_month">Month</button>
-    </button-group>
-    <spacer width="{chrome_trailing}" />
-  </row>
+  <column height="{header_height}" background="surface" window-drag="true" label="Calendar toolbar">
+    <row height="52" padding="8" gap="4" cross="center">
+      <spacer width="{chrome_leading}" />
+      <spacer grow="1" />
+      <button-group>
+        <button size="sm" selected="{view == 'days14'}" on-press="show_days14">14 Days</button>
+        <button size="sm" selected="{view == 'month'}" on-press="show_month">Month</button>
+      </button-group>
+      <button size="sm" variant="outline" on-press="go_today">Today</button>
+      <button size="sm" variant="ghost" icon="panel-left" on-press="toggle_sidebar" label="Toggle sidebar"></button>
+      <spacer width="{chrome_trailing}" />
+    </row>
+    <row grow="1" padding="12" cross="center">
+      <text size="heading" label="{period_label}"><span weight="bold">{period_label}</span></text>
+    </row>
+  </column>
   <separator />
 
   <row grow="1">
@@ -148,21 +144,21 @@
     </if>
 
     <column grow="1">
-      <if test="{view == 'week'}">
+      <if test="{view == 'days14'}">
         <column grow="1">
           <row height="46" background="surface">
             <column width="52" background="surface" />
-            <scroll axis="horizontal" value="{week_scroll_offset}" scroll-sync-group="1" grow="1" label="Week header pages" on-reach-start="recycle_week_backward" on-reach-end="recycle_week_forward">
-              <row width="{week_track_width}">
-                <for each="week_pages" as="p" key="slot_id">
-                  <use template="week-header" label="{p.label}" days="{p.days}" />
+            <scroll axis="horizontal" value="{fortnight_scroll_offset}" scroll-sync-group="1" grow="1" label="14-day header pages" on-reach-start="recycle_fortnight_backward" on-reach-end="recycle_fortnight_forward">
+              <row width="{fortnight_track_width}">
+                <for each="fortnight_pages" as="p" key="slot_id">
+                  <use template="fortnight-header" label="{p.label}" days="{p.days}" />
                 </for>
               </row>
             </scroll>
           </row>
           <separator />
           <row grow="1">
-            <scroll value="{week_vertical_offset}" scroll-sync-group="2" width="52" label="Time gutter">
+            <scroll value="{fortnight_vertical_offset}" scroll-sync-group="2" width="52" label="Time gutter">
               <column height="1152">
                 <for each="hour_rows" as="h" key="id">
                   <row height="72" padding="4" main="end">
@@ -171,11 +167,11 @@
                 </for>
               </column>
             </scroll>
-            <scroll axis="horizontal" value="{week_scroll_offset}" scroll-sync-group="1" grow="1" label="Week pages" on-reach-start="recycle_week_backward" on-reach-end="recycle_week_forward">
-              <scroll value="{week_vertical_offset}" scroll-sync-group="2" width="{week_track_width}" grow="1" label="Week grids">
-                <row width="{week_track_width}" height="1152">
-                  <for each="week_pages" as="p" key="slot_id">
-                    <use template="week-grid" label="{p.label}" monday_events="{p.monday_events}" tuesday_events="{p.tuesday_events}" wednesday_events="{p.wednesday_events}" thursday_events="{p.thursday_events}" friday_events="{p.friday_events}" saturday_events="{p.saturday_events}" sunday_events="{p.sunday_events}" />
+            <scroll axis="horizontal" value="{fortnight_scroll_offset}" scroll-sync-group="1" grow="1" label="14-day pages" on-reach-start="recycle_fortnight_backward" on-reach-end="recycle_fortnight_forward">
+              <scroll value="{fortnight_vertical_offset}" scroll-sync-group="2" width="{fortnight_track_width}" grow="1" label="14-day grids">
+                <row width="{fortnight_track_width}" height="1152">
+                  <for each="fortnight_pages" as="p" key="slot_id">
+                    <use template="fortnight-grid" label="{p.label}" days="{p.days}" />
                   </for>
                 </row>
               </scroll>

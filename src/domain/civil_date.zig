@@ -94,12 +94,17 @@ pub fn formatMonthYear(allocator: std.mem.Allocator, value: YearMonth) ![]const 
 }
 
 pub fn formatWeekRange(allocator: std.mem.Allocator, monday: CivilDate) ![]const u8 {
-    const sunday = addDays(monday, 6);
-    if (monday.year == sunday.year and monday.month == sunday.month) {
-        return std.fmt.allocPrint(allocator, "{s} {d}–{d}, {d}", .{ monthName(monday.month), monday.day, sunday.day, monday.year });
+    return formatDayRange(allocator, monday, 7);
+}
+
+pub fn formatDayRange(allocator: std.mem.Allocator, start: CivilDate, day_count: u8) ![]const u8 {
+    if (day_count == 0) return error.InvalidDayCount;
+    const end = addDays(start, day_count - 1);
+    if (start.year == end.year and start.month == end.month) {
+        return std.fmt.allocPrint(allocator, "{s} {d}–{d}, {d}", .{ monthName(start.month), start.day, end.day, start.year });
     }
-    if (monday.year == sunday.year) {
-        return std.fmt.allocPrint(allocator, "{s} {d}–{s} {d}, {d}", .{ monthName(monday.month), monday.day, monthName(sunday.month), sunday.day, monday.year });
+    if (start.year == end.year) {
+        return std.fmt.allocPrint(allocator, "{s} {d}–{s} {d}, {d}", .{ monthName(start.month), start.day, monthName(end.month), end.day, start.year });
     }
-    return std.fmt.allocPrint(allocator, "{s} {d}, {d}–{s} {d}, {d}", .{ monthName(monday.month), monday.day, monday.year, monthName(sunday.month), sunday.day, sunday.year });
+    return std.fmt.allocPrint(allocator, "{s} {d}, {d}–{s} {d}, {d}", .{ monthName(start.month), start.day, start.year, monthName(end.month), end.day, end.year });
 }

@@ -6,7 +6,10 @@
     .version = "0.1.0",
     .platforms = .{"macos"},
     .permissions = .{ "view", "command" },
-    .capabilities = .{ "native_views", "gpu_surfaces" },
+    .capabilities = .{ "native_views", "gpu_surfaces", "shortcuts" },
+    .shortcuts = .{
+        .{ .id = "calendar.toggle-sidebar", .key = "b", .modifiers = .{"primary"} },
+    },
     .theme = "geist",
     .theme_accent = "#5f63d8",
     .shell = .{

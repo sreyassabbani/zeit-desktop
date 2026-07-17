@@ -96,14 +96,15 @@ test "five recycled calendar pages remain chronologically ordered" {
     defer arena_state.deinit();
     var model = main.initialModel();
 
-    const weeks = model.week_pages(arena_state.allocator());
-    try testing.expectEqual(@as(usize, 5), weeks.len);
-    try testing.expectEqualStrings("June 29–July 5, 2026", weeks[0].label);
-    try testing.expectEqualStrings("July 13–19, 2026", weeks[2].label);
-    try testing.expectEqualStrings("July 27–August 2, 2026", weeks[4].label);
-    try testing.expectEqual(@as(u64, 2), weeks[2].slot_id);
-    try testing.expect(weeks[2].wednesday_events.len > 0);
-    try testing.expectEqual(@as(usize, 0), weeks[1].wednesday_events.len);
+    const fortnights = model.fortnight_pages(arena_state.allocator());
+    try testing.expectEqual(@as(usize, 5), fortnights.len);
+    try testing.expectEqualStrings("June 15–28, 2026", fortnights[0].label);
+    try testing.expectEqualStrings("July 13–26, 2026", fortnights[2].label);
+    try testing.expectEqualStrings("August 10–23, 2026", fortnights[4].label);
+    try testing.expectEqual(@as(u64, 2), fortnights[2].slot_id);
+    try testing.expectEqual(@as(usize, 14), fortnights[2].days.len);
+    try testing.expect(fortnights[2].days[2].events.len > 0);
+    try testing.expectEqual(@as(usize, 0), fortnights[1].days[2].events.len);
 
     const months = model.month_pages(arena_state.allocator());
     try testing.expectEqual(@as(usize, 5), months.len);
@@ -213,15 +214,15 @@ test "typed markup dispatch drives view navigation" {
     try testing.expectEqualStrings("July 2026", model.period_label(arena_state.allocator()));
 }
 
-test "week scrolling remains runtime-owned and dispatches no model message" {
+test "14-day scrolling remains runtime-owned and dispatches no model message" {
     var arena_state = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena_state.deinit();
     const model = main.initialModel();
     const tree = try buildTree(arena_state.allocator(), &model);
-    const pages = findByLabel(tree.root, .scroll_view, "Week pages") orelse return error.WidgetNotFound;
+    const pages = findByLabel(tree.root, .scroll_view, "14-day pages") orelse return error.WidgetNotFound;
     try testing.expectEqual(canvas.WidgetScrollAxis.horizontal, pages.scroll_axis);
     try testing.expectEqual(@as(u64, 1), pages.scroll_sync_group);
-    try testing.expectEqual(model.week_page_width() * 2, pages.value);
+    try testing.expectEqual(model.fortnight_page_width() * 2, pages.value);
     try testing.expect(tree.msgForScroll(pages.id, .{ .offset = 240 }) == null);
 }
 
@@ -239,14 +240,14 @@ test "month view mounts adjacent months in one runtime-owned scroll region" {
 
 test "page recycling advances chronology while preserving the visual coordinate" {
     var model = main.initialModel();
-    const week_width = model.week_page_width();
-    model.week_scroll_offset = week_width * 3.25;
-    const week_coordinate_before = @as(f32, @floatFromInt(model.week_window_start)) + model.week_scroll_offset / week_width;
-    main.update(&model, .recycle_week_forward);
-    const week_coordinate_after = @as(f32, @floatFromInt(model.week_window_start)) + model.week_scroll_offset / week_width;
-    try testing.expectEqual(@as(i32, -1), model.week_window_start);
-    try testing.expectApproxEqAbs(week_coordinate_before, week_coordinate_after, 0.0001);
-    try testing.expectApproxEqAbs(week_width * 2.25, model.week_scroll_target, 0.0001);
+    const fortnight_width = model.fortnight_page_width();
+    model.fortnight_scroll_offset = fortnight_width * 3.25;
+    const fortnight_coordinate_before = @as(f32, @floatFromInt(model.fortnight_window_start)) + model.fortnight_scroll_offset / fortnight_width;
+    main.update(&model, .recycle_fortnight_forward);
+    const fortnight_coordinate_after = @as(f32, @floatFromInt(model.fortnight_window_start)) + model.fortnight_scroll_offset / fortnight_width;
+    try testing.expectEqual(@as(i32, -1), model.fortnight_window_start);
+    try testing.expectApproxEqAbs(fortnight_coordinate_before, fortnight_coordinate_after, 0.0001);
+    try testing.expectApproxEqAbs(fortnight_width * 2.25, model.fortnight_scroll_target, 0.0001);
 
     model.month_scroll_offset = model.month_page_height() * 0.75;
     const month_coordinate_before = @as(f32, @floatFromInt(model.month_window_start)) + model.month_scroll_offset / model.month_page_height();
@@ -259,35 +260,35 @@ test "page recycling advances chronology while preserving the visual coordinate"
 
 test "Today targets the current period after runtime offsets are synced" {
     var model = main.initialModel();
-    model.week_scroll_offset = 42;
+    model.fortnight_scroll_offset = 42;
     model.month_scroll_offset = 91;
     main.update(&model, .go_today);
-    try testing.expectEqual(model.week_page_width() * 2, model.week_scroll_target);
+    try testing.expectEqual(model.fortnight_page_width() * 2, model.fortnight_scroll_target);
     try testing.expectEqual(model.month_page_height() * 2, model.month_scroll_target);
-    try testing.expectEqual(model.week_scroll_target + 1, model.week_scroll_offset);
+    try testing.expectEqual(model.fortnight_scroll_target + 1, model.fortnight_scroll_offset);
     try testing.expectEqual(model.month_scroll_target + 1, model.month_scroll_offset);
 
     main.update(&model, .settle_scroll_override);
-    try testing.expectEqual(model.week_scroll_target, model.week_scroll_offset);
+    try testing.expectEqual(model.fortnight_scroll_target, model.fortnight_scroll_offset);
     try testing.expectEqual(model.month_scroll_target, model.month_scroll_offset);
     main.update(&model, .settle_scroll_override);
-    try testing.expect(!model.week_scroll_override);
+    try testing.expect(!model.fortnight_scroll_override);
     try testing.expect(!model.month_scroll_override);
 }
 
-test "first viewport measurement centers the current week before resize scaling" {
+test "first viewport measurement centers the current 14-day period before resize scaling" {
     var model = main.initialModel();
     main.update(&model, .{ .viewport_changed = .{ .width = 1710, .height = 1073 } });
     try testing.expect(model.viewport_initialized);
-    try testing.expect(model.week_scroll_override);
-    try testing.expectEqual(model.week_page_width() * 2, model.week_scroll_target);
+    try testing.expect(model.fortnight_scroll_override);
+    try testing.expectEqual(model.fortnight_page_width() * 2, model.fortnight_scroll_target);
     main.update(&model, .settle_scroll_override);
     main.update(&model, .settle_scroll_override);
 
-    const old_page_width = model.week_page_width();
-    model.week_scroll_offset = old_page_width * 1.25;
+    const old_page_width = model.fortnight_page_width();
+    model.fortnight_scroll_offset = old_page_width * 1.25;
     main.update(&model, .{ .viewport_changed = .{ .width = 1510, .height = 973 } });
-    try testing.expectApproxEqAbs(@as(f32, 1.25), model.week_scroll_target / model.week_page_width(), 0.0001);
+    try testing.expectApproxEqAbs(@as(f32, 1.25), model.fortnight_scroll_target / model.fortnight_page_width(), 0.0001);
 }
 
 test "programmatic scroll targets survive one runtime sync then release ownership" {
@@ -299,23 +300,23 @@ test "programmatic scroll targets survive one runtime sync then release ownershi
     const tree = try buildTree(arena_state.allocator(), &model);
     var nodes: [1024]canvas.WidgetLayoutNode = undefined;
     const layout = try canvas.layoutWidgetTree(tree.root, native_sdk.geometry.RectF.init(0, 0, 1710, 1073), &nodes);
-    const week = findByLabel(tree.root, .scroll_view, "Week pages") orelse return error.WidgetNotFound;
+    const fortnight = findByLabel(tree.root, .scroll_view, "14-day pages") orelse return error.WidgetNotFound;
     for (nodes[0..layout.nodes.len]) |*node| {
-        if (node.widget.id == week.id) node.widget.value = 42;
+        if (node.widget.id == fortnight.id) node.widget.value = 42;
     }
     main.syncRuntimeState(&model, layout);
-    try testing.expectEqual(model.week_scroll_target + 1, model.week_scroll_offset);
+    try testing.expectEqual(model.fortnight_scroll_target + 1, model.fortnight_scroll_offset);
 
     const settle = main.onFrame(&model, .{ .size = .{ .width = model.viewport_width, .height = model.viewport_height } }) orelse return error.ExpectedMessage;
     main.update(&model, settle);
-    try testing.expectEqual(model.week_scroll_target, model.week_scroll_offset);
+    try testing.expectEqual(model.fortnight_scroll_target, model.fortnight_scroll_offset);
     main.syncRuntimeState(&model, layout);
-    try testing.expectEqual(model.week_scroll_target, model.week_scroll_offset);
+    try testing.expectEqual(model.fortnight_scroll_target, model.fortnight_scroll_offset);
 
     main.update(&model, .settle_scroll_override);
-    try testing.expect(!model.week_scroll_override);
+    try testing.expect(!model.fortnight_scroll_override);
     main.syncRuntimeState(&model, layout);
-    try testing.expectEqual(@as(f32, 42), model.week_scroll_offset);
+    try testing.expectEqual(@as(f32, 42), model.fortnight_scroll_offset);
 }
 
 test "calendar view lays out within the SDK node budget" {
@@ -335,5 +336,13 @@ test "chrome geometry updates the native titlebar clearance" {
     main.update(&model, msg);
     try testing.expectEqual(@as(f32, 78), model.chrome_leading);
     try testing.expectEqual(@as(f32, 12), model.chrome_trailing);
-    try testing.expectEqual(@as(f32, 60), model.header_height);
+    try testing.expectEqual(@as(f32, 96), model.header_height);
+}
+
+test "primary B command toggles the sidebar" {
+    var model = main.initialModel();
+    const msg = main.onCommand(main.toggle_sidebar_command) orelse return error.MessageNotFound;
+    main.update(&model, msg);
+    try testing.expect(!model.sidebar_open);
+    try testing.expect(main.onCommand("calendar.unknown") == null);
 }
