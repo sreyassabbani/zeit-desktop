@@ -1,0 +1,18 @@
+[language-server.native-markup-lsp]
+command = "native"
+args = ["markup", "lsp"]
+
+[[language]]
+name = "native-markup"
+scope = "source.native-markup"
+file-types = ["native"]
+grammar = "html"
+roots = ["app.zon", ".git"]
+comment-tokens = []
+block-comment-tokens = { start = "<!--", end = "-->" }
+language-servers = ["native-markup-lsp"]
+auto-pairs = { '<' = '>', '{' = '}', '"' = '"' }
+
+[language.indent]
+tab-width = 2
+unit = "  "
