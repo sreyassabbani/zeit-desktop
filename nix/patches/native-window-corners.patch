@@ -1,0 +1,18 @@
+diff --git a/src/platform/macos/appkit_host.m b/src/platform/macos/appkit_host.m
+--- a/src/platform/macos/appkit_host.m
++++ b/src/platform/macos/appkit_host.m
+@@ -6390,6 +6390,14 @@
+     NSView *container = [[NSView alloc] initWithFrame:rect];
+     container.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+     window.contentView = container;
++    if (titlebarStyle == 1 || titlebarStyle == 2) {
++        // Zeit keeps AppKit's real window chrome and traffic lights, but
++        // uses a tighter frame silhouette than the system's roomy default.
++        NSView *frameView = window.contentView.superview;
++        frameView.wantsLayer = YES;
++        frameView.layer.cornerRadius = 6.0;
++        frameView.layer.masksToBounds = YES;
++    }
+     // The window's MAIN WebView is created lazily
+     // (`ensureMainWebViewForWindowId:`): a canvas-first app never loads
+     // it, and instantiating WKWebView spins up the whole out-of-process

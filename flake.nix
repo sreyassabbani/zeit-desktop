@@ -23,6 +23,7 @@
             ./nix/patches/native-horizontal-scroll.patch
             ./nix/patches/native-scroll-sync.patch
             ./nix/patches/native-hidden-scrollbars.patch
+            ./nix/patches/native-window-corners.patch
           ];
         };
         nativeCli = pkgs.stdenv.mkDerivation {
